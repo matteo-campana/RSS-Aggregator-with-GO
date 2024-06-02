@@ -20,10 +20,12 @@ func (apiConfig *apiConfig) handleCreateUser(w http.ResponseWriter, r *http.Requ
 	err := decoder.Decode(&params)
 	if err != nil {
 		respondeWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request payload, err: %v", err))
+		return
 	}
 
 	if params.Name == "" {
 		respondeWithError(w, http.StatusBadRequest, "Name cannot be an empty string")
+		return
 	}
 
 	user, err := apiConfig.DB.CreateUser(r.Context(), database.CreateUserParams{

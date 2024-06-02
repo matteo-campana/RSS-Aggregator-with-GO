@@ -20,6 +20,7 @@ func (apiConfig *apiConfig) handleCreateFeed(w http.ResponseWriter, r *http.Requ
 	err := decoder.Decode(&params)
 	if err != nil {
 		respondeWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request payload, err: %v", err))
+		return
 	}
 
 	feed, err := apiConfig.DB.CreateFeed(r.Context(), database.CreateFeedParams{
@@ -33,6 +34,7 @@ func (apiConfig *apiConfig) handleCreateFeed(w http.ResponseWriter, r *http.Requ
 
 	if err != nil {
 		respondeWithError(w, http.StatusBadRequest, fmt.Sprintf("Error creating feed: %v", err))
+		return
 	}
 
 	respondeWithJSON(w, http.StatusCreated, databaseFeedToFeed(feed))
@@ -43,6 +45,7 @@ func (apiConfig *apiConfig) handleGetFeeds(w http.ResponseWriter, r *http.Reques
 	feeds, err := apiConfig.DB.GetFeeds(r.Context())
 	if err != nil {
 		respondeWithError(w, http.StatusBadRequest, fmt.Sprintf("Error getting feeds: %v", err))
+		return
 	}
 
 	respondeWithJSON(w, http.StatusOK, databaseFeedsToFeeds(feeds))
