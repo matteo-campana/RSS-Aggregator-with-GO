@@ -118,27 +118,7 @@ func databasePostsToPosts(dbPosts []database.Post) []Post {
 	posts := []Post{}
 
 	for _, dbPost := range dbPosts {
-		var title *string
-		if dbPost.Title.Valid {
-			title = &dbPost.Title.String
-		}
-		var description *string
-		if dbPost.Description.Valid {
-			description = &dbPost.Description.String
-		}
-
-		post := Post{
-			ID:          dbPost.ID,
-			CreatedAt:   dbPost.CreatedAt,
-			UpdatedAt:   dbPost.UpdatedAt,
-			Title:       title,
-			Description: description,
-			PublishedAt: dbPost.PublishedAt,
-			Url:         dbPost.Url,
-			FeedID:      dbPost.FeedID,
-		}
-
-		posts = append(posts, post)
+		posts = append(posts, databasePostToPost(dbPost))
 	}
 
 	return posts
