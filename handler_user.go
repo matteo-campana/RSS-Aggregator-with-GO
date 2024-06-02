@@ -47,3 +47,18 @@ func (apiConfig *apiConfig) handleCreateUser(w http.ResponseWriter, r *http.Requ
 func (apiConfig *apiConfig) handleGetUser(w http.ResponseWriter, r *http.Request, user database.User) {
 	respondeWithJSON(w, http.StatusOK, databaseUserToUser(user))
 }
+
+func (apiConfig *apiConfig) handleGetPostsForUser(w http.ResponseWriter, r *http.Request, user database.User) {
+	posts, err := apiConfig.DB.GetPostsForUser(r.Context(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  10,
+	})
+
+	if err != nil {
+		log.Fatal("Error getting posts for user: ", err)
+		respondeWithError(w, http.StatusInternalServerError, fmt.Sprintf("Error getting posts for user: %v", err))
+		return
+	}
+
+	respondeWithJSON(w, http.StatusOK, databasePostsToPosts(posts))
+}
