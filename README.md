@@ -16,7 +16,7 @@ The requirements section lists the technologies needed to run the project. In th
 - [x] Create a Go program to fetch RSS feeds
 - [x] Parse the fetched data and store it in a Postgres database
 - [x] Implement a REST API to retrieve the aggregated data
-- [x] Write tests to ensure the program works as expected
+- [ ] Write tests to ensure the program works as expected
 - [ ] Define a front-end interface to display the aggregated data
 - [ ] Add authentication and authorization to the REST API
 - [ ] Implement caching to improve performance
