@@ -10,3 +10,23 @@ The requirements section lists the technologies needed to run the project. In th
 
 - Go (Version 1.22 used in this project)
 - Postgres (Version 16.3 used in this project)
+
+## TODO
+
+- [x] Create a Go program to fetch RSS feeds
+- [x] Parse the fetched data and store it in a Postgres database
+- [x] Implement a REST API to retrieve the aggregated data
+- [x] Write tests to ensure the program works as expected
+- [ ] Define a front-end interface to display the aggregated data
+- [ ] Add authentication and authorization to the REST API
+- [ ] Implement caching to improve performance
+- [ ] Add error handling and logging to the program
+- [ ] Refactor the code to improve readability and maintainability
+- [ ] Document the project to help other developers understand and contribute
+- [ ] Optimize the program for scalability and efficiency
+- [ ] Add support for additional RSS feed formats and sources
+- [ ] Integrate with third-party services for additional functionality
+- [ ] Implement a CI/CD pipeline to automate testing and deployment
+- [ ] Deploy the project to a server for public access
+- [ ] Monitor the project for performance and stability
+- [ ] Implement additional features and improvements as needed
