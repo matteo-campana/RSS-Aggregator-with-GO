@@ -13,7 +13,7 @@ The requirements section lists the technologies needed to run the project. In th
 
 ## Next Steps
 
-This project starts to extend the tutorial / crash course [Golang Web Server and RSS Scraper | Full Tutorial](https://www.youtube.com/watch?v=dpXhDzgUSe4). My goal is to create a complete RSS aggregator to aggregate the rss feeds from [**fitgirl-repacks**](https://fitgirl-repacks.site/), [**DODI-repacks**](https://dodi-repacks.site/), and [Nyaa](https://nyaa.si/) and retrieve data from SteamDB and AnimeDB to get the latest game and anime releases and help users find the latest content without having to visit multiple websites.
+This project starts to extend the tutorial / crash course [Golang Web Server and RSS Scraper | Full Tutorial](https://www.youtube.com/watch?v=dpXhDzgUSe4). My goal is to create a complete RSS aggregator to aggregate the rss feeds from [**fitgirl-repacks**](https://fitgirl-repacks.site/), [**DODI-repacks**](https://dodi-repacks.site/), and [**Nyaa**](https://nyaa.si/) and retrieve data from SteamDB and AnimeDB to get the latest game and anime releases and help users find the latest content without having to visit multiple websites.
 
 <p align="center">
     <img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExOWF0MDNscTk2am1ubzNsYTZzZWpndzE0ODR5bWVzb2c3Z3F3Nm8xdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gIGomV9gjk9R3l66mQ/giphy.webp" alt="pirate alt" width="300px">
