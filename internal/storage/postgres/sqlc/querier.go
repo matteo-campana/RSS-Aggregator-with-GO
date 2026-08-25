@@ -6,8 +6,6 @@ package sqlc
 
 import (
 	"context"
-
-	uuid "github.com/google/uuid"
 )
 
 type Querier interface {
@@ -18,7 +16,11 @@ type Querier interface {
 	// Returns the number of affected rows so the caller can tell "deleted" from
 	// "no such follow for this user" and answer 404 instead of a silent 200.
 	DeleteFeedFollow(ctx context.Context, arg DeleteFeedFollowParams) (int64, error)
-	GetFeedFollows(ctx context.Context, userID uuid.UUID) ([]FeedFollow, error)
+	// Lets a client that got a 409 from POST /v1/feeds find the feed that already
+	// holds the URL, so it can follow it. feeds.url is UNIQUE, so this is an index
+	// lookup.
+	GetFeedByURL(ctx context.Context, url string) (Feed, error)
+	GetFeedFollows(ctx context.Context, arg GetFeedFollowsParams) ([]FeedFollow, error)
 	// The trailing id keeps the ordering total, so a page boundary cannot repeat
 	// or skip a feed when several share a created_at.
 	GetFeeds(ctx context.Context, arg GetFeedsParams) ([]Feed, error)

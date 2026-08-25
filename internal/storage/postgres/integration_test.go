@@ -202,6 +202,47 @@ func TestFeedFetchScheduling(t *testing.T) {
 	assert.WithinDuration(t, at, *found.LastFetchedAt, time.Second)
 }
 
+func TestGetFeedByURL(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+	feed := newFeed(ctx, t, r, user)
+
+	got, err := r.feeds.GetByURL(ctx, feed.URL)
+	require.NoError(t, err)
+	assert.Equal(t, feed.ID, got.ID)
+
+	_, err = r.feeds.GetByURL(ctx, "https://example.com/nothing-here")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestFeedFollowPagination(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for range 5 {
+		feed := newFeed(ctx, t, r, user)
+		_, err := r.follows.Create(ctx, domain.FeedFollow{
+			ID: uuid.New(), CreatedAt: now, UpdatedAt: now, UserID: user.ID, FeedID: feed.ID,
+		})
+		require.NoError(t, err)
+	}
+
+	first, err := r.follows.ListByUser(ctx, user.ID, 2, 0)
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+
+	second, err := r.follows.ListByUser(ctx, user.ID, 2, 2)
+	require.NoError(t, err)
+	require.Len(t, second, 2)
+
+	assert.NotEqual(t, first[0].ID, second[0].ID, "offset must move the window")
+
+	all, err := r.follows.ListByUser(ctx, user.ID, 100, 0)
+	require.NoError(t, err)
+	assert.Len(t, all, 5, "the listing is scoped to the owner")
+}
+
 // Only feeds that are actually due may come back, otherwise every replica
 // refetches the same batch on every tick.
 func TestNextToFetchSkipsRecentlyFetchedFeeds(t *testing.T) {

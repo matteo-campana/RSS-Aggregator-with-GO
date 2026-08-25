@@ -31,12 +31,13 @@ type UserService interface {
 type FeedService interface {
 	Create(ctx context.Context, userID uuid.UUID, name, url string) (domain.Feed, error)
 	List(ctx context.Context, limit, offset int32) ([]domain.Feed, error)
+	FindByURL(ctx context.Context, url string) (domain.Feed, error)
 }
 
 // FeedFollowService manages the follow relation.
 type FeedFollowService interface {
 	Create(ctx context.Context, userID, feedID uuid.UUID) (domain.FeedFollow, error)
-	ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.FeedFollow, error)
+	ListByUser(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]domain.FeedFollow, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 

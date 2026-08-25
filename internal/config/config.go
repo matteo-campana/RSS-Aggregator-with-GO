@@ -81,9 +81,16 @@ func Load() (Config, error) {
 
 	var err error
 
-	cfg.AllowedOrigins = splitAndTrim(envOr("CORS_ALLOWED_ORIGINS", "https://*,http://*"))
+	// LookupEnv rather than envOr: an explicitly empty CORS_ALLOWED_ORIGINS must
+	// be a configuration error, not a silent fallback to the allow-all default.
+	originsRaw, originsSet := os.LookupEnv("CORS_ALLOWED_ORIGINS")
+	if !originsSet {
+		originsRaw = "https://*,http://*"
+	}
+	cfg.AllowedOrigins = splitAndTrim(originsRaw)
 	if len(cfg.AllowedOrigins) == 0 {
-		problems = append(problems, "CORS_ALLOWED_ORIGINS must list at least one origin")
+		problems = append(problems,
+			"CORS_ALLOWED_ORIGINS must list at least one origin; leave it unset to use the default")
 	}
 
 	cfg.LogLevel, err = parseLogLevel(envOr("LOG_LEVEL", "info"))
@@ -121,21 +128,26 @@ func Load() (Config, error) {
 	// inserts that follow the fetch.
 	cfg.ScraperHTTPTimeout, err = durationEnv("SCRAPER_HTTP_TIMEOUT", cfg.ScraperRequestTimeout*2/3)
 	collect(err)
-	if cfg.ScraperHTTPTimeout >= cfg.ScraperRequestTimeout && cfg.ScraperRequestTimeout > 0 {
-		problems = append(problems,
-			"SCRAPER_HTTP_TIMEOUT must be shorter than SCRAPER_REQUEST_TIMEOUT, which also has to cover storing the fetched items")
-	}
 
 	cfg.DefaultPageSize, err = int32Env("DEFAULT_PAGE_SIZE", 10, 1, 1000)
 	collect(err)
 	cfg.MaxPageSize, err = int32Env("MAX_PAGE_SIZE", 100, 1, 1000)
 	collect(err)
 
-	if cfg.DBMinConns > cfg.DBMaxConns {
-		problems = append(problems, "DB_MIN_CONNS must not exceed DB_MAX_CONNS")
-	}
-	if cfg.DefaultPageSize > cfg.MaxPageSize {
-		problems = append(problems, "DEFAULT_PAGE_SIZE must not exceed MAX_PAGE_SIZE")
+	// Cross-field checks run only once every field parsed, otherwise a value
+	// that failed to parse is still zero here and produces a second, invented
+	// problem alongside the real one.
+	if len(problems) == 0 {
+		if cfg.DBMinConns > cfg.DBMaxConns {
+			problems = append(problems, "DB_MIN_CONNS must not exceed DB_MAX_CONNS")
+		}
+		if cfg.DefaultPageSize > cfg.MaxPageSize {
+			problems = append(problems, "DEFAULT_PAGE_SIZE must not exceed MAX_PAGE_SIZE")
+		}
+		if cfg.ScraperHTTPTimeout >= cfg.ScraperRequestTimeout {
+			problems = append(problems,
+				"SCRAPER_HTTP_TIMEOUT must be shorter than SCRAPER_REQUEST_TIMEOUT, which also has to cover storing the fetched items")
+		}
 	}
 
 	if len(problems) > 0 {

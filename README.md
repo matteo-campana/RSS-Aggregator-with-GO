@@ -56,9 +56,15 @@ header; the key is returned by `POST /v1/users`.
 | DELETE | `/v1/feed_follows/{feed_follow_id}` | ✔ | Unfollow a feed |
 | GET | `/v1/posts` | ✔ | Posts from followed feeds, newest first |
 
-`GET /v1/posts` and `GET /v1/feeds` accept `limit` and `offset` query parameters. `limit`
-defaults to `DEFAULT_PAGE_SIZE` and is capped at `MAX_PAGE_SIZE`. Feeds are ordered by
-`created_at DESC, id DESC`, a total order, so paging is stable across calls.
+Every listing (`/v1/posts`, `/v1/feeds`, `/v1/feed_follows`) accepts `limit` and `offset`.
+`limit` defaults to `DEFAULT_PAGE_SIZE` and is capped at `MAX_PAGE_SIZE`; `offset` beyond
+100 000 is rejected, since paging that deep makes the database compute and discard the whole
+result set. Listings are ordered on a total order (`created_at DESC, id DESC` for feeds and
+follows), so paging is stable across calls.
+
+`GET /v1/feeds?url=<feed url>` filters to the feed registered under that URL, returning a
+one-element array or an empty one. Because `feeds.url` is unique, registering a feed someone
+else already added answers 409; this is how a client finds that feed in order to follow it.
 
 Errors are returned as `{"error": "..."}` with a status of 400, 401, 404, 409 or 500.
 
@@ -146,3 +152,8 @@ This release corrects several defects; the following responses differ from earli
   stored once and was invisible to followers of every feed but the first one scraped.
 - The scraper refuses to connect to loopback, private and link-local addresses, redirects
   included. Set `SCRAPER_ALLOW_PRIVATE_ADDRESSES=true` only for feeds on a trusted network.
+- `GET /v1/feed_follows` is **paginated**, like the other listings.
+- Unknown routes and wrong methods answer with `{"error": ...}` rather than plain text; an
+  oversized request body answers **413** instead of 400.
+- An explicitly empty `CORS_ALLOWED_ORIGINS` is now a startup error rather than a silent
+  fallback to the allow-everything default.

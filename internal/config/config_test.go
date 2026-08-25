@@ -80,6 +80,32 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+// An explicitly empty value must not fall back to the allow-all default: that
+// silently turns a locked-down deployment into an open one.
+func TestLoadRejectsEmptyCORSOrigins(t *testing.T) {
+	setMinimal(t)
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CORS_ALLOWED_ORIGINS")
+}
+
+// A field that failed to parse is still zero, so running cross-field checks
+// against it invented a second problem next to the real one.
+func TestLoadDoesNotInventCrossFieldProblems(t *testing.T) {
+	setMinimal(t)
+	t.Setenv("DB_MAX_CONNS", "abc")
+	t.Setenv("DB_MIN_CONNS", "5")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DB_MAX_CONNS must be a number")
+	assert.NotContains(t, err.Error(), "DB_MIN_CONNS must not exceed DB_MAX_CONNS")
+}
+
 func TestLoadRejectsInconsistentBounds(t *testing.T) {
 	setMinimal(t)
 	t.Setenv("DEFAULT_PAGE_SIZE", "50")

@@ -32,7 +32,19 @@ func (s *server) handleCreateFeedFollow(w http.ResponseWriter, r *http.Request, 
 // handleListFeedFollows answers 200 OK. The previous implementation returned
 // 201 Created for this read-only endpoint.
 func (s *server) handleListFeedFollows(w http.ResponseWriter, r *http.Request, user domain.User) {
-	follows, err := s.follows.ListByUser(r.Context(), user.ID)
+	limit, err := int32Query(r.URL.Query().Get("limit"), "limit")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	offset, err := int32Query(r.URL.Query().Get("offset"), "offset")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	follows, err := s.follows.ListByUser(r.Context(), user.ID, limit, offset)
 	if err != nil {
 		s.fail(w, r, err)
 		return

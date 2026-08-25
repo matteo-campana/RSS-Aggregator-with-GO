@@ -11,14 +11,28 @@ import (
 
 // FeedFollowService implements the rules for following and unfollowing feeds.
 type FeedFollowService struct {
-	repo  FeedFollowRepository
-	clock Clock
-	ids   IDGenerator
+	repo            FeedFollowRepository
+	clock           Clock
+	ids             IDGenerator
+	defaultPageSize int32
+	maxPageSize     int32
 }
 
-// NewFeedFollowService wires a FeedFollowService with its dependencies.
-func NewFeedFollowService(repo FeedFollowRepository, clock Clock, ids IDGenerator) *FeedFollowService {
-	return &FeedFollowService{repo: repo, clock: clock, ids: ids}
+// NewFeedFollowService wires a FeedFollowService with its dependencies and
+// pagination bounds.
+func NewFeedFollowService(
+	repo FeedFollowRepository,
+	clock Clock,
+	ids IDGenerator,
+	defaultPageSize, maxPageSize int32,
+) *FeedFollowService {
+	return &FeedFollowService{
+		repo:            repo,
+		clock:           clock,
+		ids:             ids,
+		defaultPageSize: defaultPageSize,
+		maxPageSize:     maxPageSize,
+	}
 }
 
 // Create makes the user follow a feed.
@@ -41,9 +55,18 @@ func (s *FeedFollowService) Create(ctx context.Context, userID, feedID uuid.UUID
 	return follow, nil
 }
 
-// ListByUser returns the feeds the user follows.
-func (s *FeedFollowService) ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.FeedFollow, error) {
-	follows, err := s.repo.ListByUser(ctx, userID)
+// ListByUser returns a page of the feeds the user follows.
+func (s *FeedFollowService) ListByUser(
+	ctx context.Context,
+	userID uuid.UUID,
+	limit, offset int32,
+) ([]domain.FeedFollow, error) {
+	limit, offset, err := clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	follows, err := s.repo.ListByUser(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list feed follows: %w", err)
 	}

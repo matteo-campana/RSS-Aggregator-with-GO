@@ -32,8 +32,7 @@ func APIKeyFromHeader(headers http.Header) (string, error) {
 	if !strings.EqualFold(parts[0], Scheme) {
 		return "", fmt.Errorf("%w: unsupported authorization scheme %q", domain.ErrUnauthorized, parts[0])
 	}
-	if parts[1] == "" {
-		return "", fmt.Errorf("%w: empty API key", domain.ErrUnauthorized)
-	}
+	// No empty-key check: Fields never yields an empty field, so "ApiKey " alone
+	// is already caught by the length check above.
 	return parts[1], nil
 }

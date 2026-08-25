@@ -21,7 +21,7 @@ func TestFeedFollowServiceCreate(t *testing.T) {
 	owner, feedID := uuid.New(), uuid.New()
 
 	repo := &fakeFeedFollowRepo{}
-	svc := service.NewFeedFollowService(repo, fixedClock{now: now}, fixedIDs{id: id})
+	svc := service.NewFeedFollowService(repo, fixedClock{now: now}, fixedIDs{id: id}, defaultPageSize, maxPageSize)
 
 	follow, err := svc.Create(context.Background(), owner, feedID)
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestFeedFollowServiceCreateRejectsNilFeedID(t *testing.T) {
 	t.Parallel()
 
 	repo := &fakeFeedFollowRepo{}
-	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
 	_, err := svc.Create(context.Background(), uuid.New(), uuid.Nil)
 
@@ -53,7 +53,7 @@ func TestFeedFollowServiceCreateSurfacesUnknownFeed(t *testing.T) {
 	// A foreign-key violation is translated to ErrNotFound by the storage
 	// layer, so following a feed that does not exist answers 404.
 	repo := &fakeFeedFollowRepo{createErr: domain.ErrNotFound}
-	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
 	_, err := svc.Create(context.Background(), uuid.New(), uuid.New())
 
@@ -65,7 +65,7 @@ func TestFeedFollowServiceDelete(t *testing.T) {
 
 	id, owner := uuid.New(), uuid.New()
 	repo := &fakeFeedFollowRepo{}
-	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
 	require.NoError(t, svc.Delete(context.Background(), id, owner))
 
@@ -77,7 +77,7 @@ func TestFeedFollowServiceDeleteReportsMissing(t *testing.T) {
 	t.Parallel()
 
 	repo := &fakeFeedFollowRepo{deleteErr: domain.ErrNotFound}
-	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(repo, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
 	err := svc.Delete(context.Background(), uuid.New(), uuid.New())
 
@@ -87,7 +87,7 @@ func TestFeedFollowServiceDeleteReportsMissing(t *testing.T) {
 func TestFeedFollowServiceDeleteRejectsNilID(t *testing.T) {
 	t.Parallel()
 
-	svc := service.NewFeedFollowService(&fakeFeedFollowRepo{}, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(&fakeFeedFollowRepo{}, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
 	err := svc.Delete(context.Background(), uuid.Nil, uuid.New())
 
@@ -98,9 +98,9 @@ func TestFeedFollowServiceListByUser(t *testing.T) {
 	t.Parallel()
 
 	want := []domain.FeedFollow{{ID: uuid.New()}}
-	svc := service.NewFeedFollowService(&fakeFeedFollowRepo{follows: want}, fixedClock{}, fixedIDs{})
+	svc := service.NewFeedFollowService(&fakeFeedFollowRepo{follows: want}, fixedClock{}, fixedIDs{}, defaultPageSize, maxPageSize)
 
-	got, err := svc.ListByUser(context.Background(), uuid.New())
+	got, err := svc.ListByUser(context.Background(), uuid.New(), 0, 0)
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)

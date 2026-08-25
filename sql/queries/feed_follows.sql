@@ -4,7 +4,10 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetFeedFollows :many
-SELECT * FROM feed_follows WHERE user_id = $1;
+SELECT * FROM feed_follows
+WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2 OFFSET $3;
 
 -- Returns the number of affected rows so the caller can tell "deleted" from
 -- "no such follow for this user" and answer 404 instead of a silent 200.

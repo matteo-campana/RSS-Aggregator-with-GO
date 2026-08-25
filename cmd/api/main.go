@@ -77,7 +77,7 @@ func run() error {
 	// Application services.
 	userSvc := service.NewUserService(userRepo, keys, clock, ids)
 	feedSvc := service.NewFeedService(feedRepo, clock, ids, cfg.DefaultPageSize, cfg.MaxPageSize)
-	followSvc := service.NewFeedFollowService(followRepo, clock, ids)
+	followSvc := service.NewFeedFollowService(followRepo, clock, ids, cfg.DefaultPageSize, cfg.MaxPageSize)
 	postSvc := service.NewPostService(postRepo, cfg.DefaultPageSize, cfg.MaxPageSize)
 
 	// The fetcher owns its HTTP client so every outbound request goes through

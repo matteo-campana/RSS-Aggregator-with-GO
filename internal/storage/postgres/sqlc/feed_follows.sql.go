@@ -65,11 +65,20 @@ func (q *Queries) DeleteFeedFollow(ctx context.Context, arg DeleteFeedFollowPara
 }
 
 const getFeedFollows = `-- name: GetFeedFollows :many
-SELECT id, created_at, updated_at, user_id, feed_id FROM feed_follows WHERE user_id = $1
+SELECT id, created_at, updated_at, user_id, feed_id FROM feed_follows
+WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) GetFeedFollows(ctx context.Context, userID uuid.UUID) ([]FeedFollow, error) {
-	rows, err := q.db.Query(ctx, getFeedFollows, userID)
+type GetFeedFollowsParams struct {
+	UserID uuid.UUID
+	Limit  int32
+	Offset int32
+}
+
+func (q *Queries) GetFeedFollows(ctx context.Context, arg GetFeedFollowsParams) ([]FeedFollow, error) {
+	rows, err := q.db.Query(ctx, getFeedFollows, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

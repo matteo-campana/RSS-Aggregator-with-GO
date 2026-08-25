@@ -53,6 +53,15 @@ func (r *FeedRepository) List(ctx context.Context, limit, offset int32) ([]domai
 	return toDomainFeeds(rows), nil
 }
 
+// GetByURL looks a feed up by its URL.
+func (r *FeedRepository) GetByURL(ctx context.Context, url string) (domain.Feed, error) {
+	row, err := r.q.GetFeedByURL(ctx, url)
+	if err != nil {
+		return domain.Feed{}, translate(err)
+	}
+	return toDomainFeed(row), nil
+}
+
 // NextToFetch returns the least recently fetched feeds that are due,
 // never-fetched first.
 func (r *FeedRepository) NextToFetch(

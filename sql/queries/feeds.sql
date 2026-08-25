@@ -10,6 +10,12 @@ SELECT * FROM feeds
 ORDER BY created_at DESC, id DESC
 LIMIT $1 OFFSET $2;
 
+-- Lets a client that got a 409 from POST /v1/feeds find the feed that already
+-- holds the URL, so it can follow it. feeds.url is UNIQUE, so this is an index
+-- lookup.
+-- name: GetFeedByURL :one
+SELECT * FROM feeds WHERE url = $1;
+
 -- Only feeds that are actually due are returned. Without the predicate every
 -- replica of the API selects the same batch on every tick and refetches feeds
 -- that were just fetched, with the duplicate inserts absorbed as conflicts so

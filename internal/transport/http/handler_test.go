@@ -134,6 +134,64 @@ func TestListFeedsPassesPagination(t *testing.T) {
 	}
 }
 
+// POST /v1/feeds answers 409 when another user already registered the URL, with
+// no id in the body. This filter is the forward path out of that dead end.
+func TestListFeedsFiltersByURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("known url returns the feed", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.feeds.feed = domain.Feed{ID: uuid.New(), URL: "https://go.dev/blog/feed.atom"}
+
+		resp := h.do(t, nethttp.MethodGet,
+			"/v1/feeds?url=https%3A%2F%2Fgo.dev%2Fblog%2Ffeed.atom", "", "")
+
+		require.Equal(t, nethttp.StatusOK, resp.StatusCode)
+		assert.Equal(t, "https://go.dev/blog/feed.atom", h.feeds.gotURL)
+
+		body := decode[[]map[string]any](t, resp)
+		require.Len(t, body, 1)
+		assert.Equal(t, "https://go.dev/blog/feed.atom", body[0]["url"])
+	})
+
+	t.Run("unknown url returns an empty list, not 404", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.feeds.findErr = domain.ErrNotFound
+
+		resp := h.do(t, nethttp.MethodGet, "/v1/feeds?url=https%3A%2F%2Fexample.com%2Ff", "", "")
+
+		require.Equal(t, nethttp.StatusOK, resp.StatusCode)
+		assert.Equal(t, "[]", bodyString(t, resp), "a filter that matches nothing is an empty page")
+	})
+
+	t.Run("invalid url is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.feeds.findErr = domain.NewValidationError("url", "must use the http or https scheme")
+
+		resp := h.do(t, nethttp.MethodGet, "/v1/feeds?url=file%3A%2F%2F%2Fetc%2Fpasswd", "", "")
+
+		assert.Equal(t, nethttp.StatusBadRequest, resp.StatusCode)
+	})
+}
+
+func TestListFeedFollowsPassesPagination(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	resp := h.do(t, nethttp.MethodGet, "/v1/feed_follows?limit=5&offset=15", "", "key")
+
+	require.Equal(t, nethttp.StatusOK, resp.StatusCode)
+	assert.Equal(t, int32(5), h.follows.gotLimit)
+	assert.Equal(t, int32(15), h.follows.gotOffset)
+}
+
 func TestCreateFeed(t *testing.T) {
 	t.Parallel()
 

@@ -47,16 +47,26 @@ type fakeFeedService struct {
 	createErr error
 	listErr   error
 
-	gotName, gotURL string
-	gotUserID       uuid.UUID
-	gotLimit        int32
-	gotOffset       int32
+	gotName   string
+	gotURL    string
+	gotUserID uuid.UUID
+	gotLimit  int32
+	gotOffset int32
+	findErr   error
 }
 
 func (s *fakeFeedService) Create(_ context.Context, userID uuid.UUID, name, url string) (domain.Feed, error) {
 	s.gotUserID, s.gotName, s.gotURL = userID, name, url
 	if s.createErr != nil {
 		return domain.Feed{}, s.createErr
+	}
+	return s.feed, nil
+}
+
+func (s *fakeFeedService) FindByURL(_ context.Context, url string) (domain.Feed, error) {
+	s.gotURL = url
+	if s.findErr != nil {
+		return domain.Feed{}, s.findErr
 	}
 	return s.feed, nil
 }
@@ -79,6 +89,8 @@ type fakeFeedFollowService struct {
 	gotFeedID uuid.UUID
 	gotID     uuid.UUID
 	gotUserID uuid.UUID
+	gotLimit  int32
+	gotOffset int32
 }
 
 func (s *fakeFeedFollowService) Create(_ context.Context, userID, feedID uuid.UUID) (domain.FeedFollow, error) {
@@ -89,8 +101,12 @@ func (s *fakeFeedFollowService) Create(_ context.Context, userID, feedID uuid.UU
 	return s.follow, nil
 }
 
-func (s *fakeFeedFollowService) ListByUser(_ context.Context, userID uuid.UUID) ([]domain.FeedFollow, error) {
-	s.gotUserID = userID
+func (s *fakeFeedFollowService) ListByUser(
+	_ context.Context,
+	userID uuid.UUID,
+	limit, offset int32,
+) ([]domain.FeedFollow, error) {
+	s.gotUserID, s.gotLimit, s.gotOffset = userID, limit, offset
 	if s.listErr != nil {
 		return nil, s.listErr
 	}

@@ -85,6 +85,24 @@ func (s *FeedService) List(ctx context.Context, limit, offset int32) ([]domain.F
 	return feeds, nil
 }
 
+// FindByURL returns the feed registered under a URL.
+//
+// feeds.url is UNIQUE, so registering a feed someone else already added answers
+// 409 with no id in the body. This gives the client the forward path it needs:
+// look the feed up, then follow it.
+func (s *FeedService) FindByURL(ctx context.Context, rawURL string) (domain.Feed, error) {
+	feedURL, err := validateFeedURL(rawURL)
+	if err != nil {
+		return domain.Feed{}, err
+	}
+
+	feed, err := s.repo.GetByURL(ctx, feedURL)
+	if err != nil {
+		return domain.Feed{}, fmt.Errorf("find feed by url: %w", err)
+	}
+	return feed, nil
+}
+
 // validateFeedURL rejects anything the scraper could not or should not fetch.
 //
 // The host checks here are a courtesy, not a security boundary: a hostname can

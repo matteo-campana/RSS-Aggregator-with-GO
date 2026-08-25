@@ -72,6 +72,8 @@ type fakeFeedRepo struct {
 	lastCreated domain.Feed
 	gotLimit    int32
 	gotOffset   int32
+	gotURL      string
+	getErr      error
 }
 
 func (r *fakeFeedRepo) Create(_ context.Context, f domain.Feed) (domain.Feed, error) {
@@ -80,6 +82,17 @@ func (r *fakeFeedRepo) Create(_ context.Context, f domain.Feed) (domain.Feed, er
 	}
 	r.lastCreated = f
 	return f, nil
+}
+
+func (r *fakeFeedRepo) GetByURL(_ context.Context, url string) (domain.Feed, error) {
+	r.gotURL = url
+	if r.getErr != nil {
+		return domain.Feed{}, r.getErr
+	}
+	if len(r.feeds) == 0 {
+		return domain.Feed{}, domain.ErrNotFound
+	}
+	return r.feeds[0], nil
 }
 
 func (r *fakeFeedRepo) List(_ context.Context, limit, offset int32) ([]domain.Feed, error) {
@@ -99,6 +112,8 @@ type fakeFeedFollowRepo struct {
 	lastCreated  domain.FeedFollow
 	deletedID    uuid.UUID
 	deletedOwner uuid.UUID
+	gotLimit     int32
+	gotOffset    int32
 }
 
 func (r *fakeFeedFollowRepo) Create(_ context.Context, ff domain.FeedFollow) (domain.FeedFollow, error) {
@@ -109,7 +124,12 @@ func (r *fakeFeedFollowRepo) Create(_ context.Context, ff domain.FeedFollow) (do
 	return ff, nil
 }
 
-func (r *fakeFeedFollowRepo) ListByUser(_ context.Context, _ uuid.UUID) ([]domain.FeedFollow, error) {
+func (r *fakeFeedFollowRepo) ListByUser(
+	_ context.Context,
+	_ uuid.UUID,
+	limit, offset int32,
+) ([]domain.FeedFollow, error) {
+	r.gotLimit, r.gotOffset = limit, offset
 	if r.listErr != nil {
 		return nil, r.listErr
 	}

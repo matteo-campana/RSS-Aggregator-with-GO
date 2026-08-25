@@ -39,8 +39,16 @@ func (r *FeedFollowRepository) Create(ctx context.Context, ff domain.FeedFollow)
 }
 
 // ListByUser returns the follows belonging to a user.
-func (r *FeedFollowRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.FeedFollow, error) {
-	rows, err := r.q.GetFeedFollows(ctx, userID)
+func (r *FeedFollowRepository) ListByUser(
+	ctx context.Context,
+	userID uuid.UUID,
+	limit, offset int32,
+) ([]domain.FeedFollow, error) {
+	rows, err := r.q.GetFeedFollows(ctx, sqlc.GetFeedFollowsParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
 	if err != nil {
 		return nil, translate(err)
 	}

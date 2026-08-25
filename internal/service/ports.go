@@ -26,12 +26,13 @@ type UserRepository interface {
 type FeedRepository interface {
 	Create(ctx context.Context, f domain.Feed) (domain.Feed, error)
 	List(ctx context.Context, limit, offset int32) ([]domain.Feed, error)
+	GetByURL(ctx context.Context, url string) (domain.Feed, error)
 }
 
 // FeedFollowRepository persists the user-to-feed relation.
 type FeedFollowRepository interface {
 	Create(ctx context.Context, ff domain.FeedFollow) (domain.FeedFollow, error)
-	ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.FeedFollow, error)
+	ListByUser(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]domain.FeedFollow, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
