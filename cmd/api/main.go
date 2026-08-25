@@ -80,11 +80,16 @@ func run() error {
 	followSvc := service.NewFeedFollowService(followRepo, clock, ids)
 	postSvc := service.NewPostService(postRepo, cfg.DefaultPageSize, cfg.MaxPageSize)
 
-	// Background scraper over a shared HTTP client.
-	fetcher := feedfetch.New(
-		&http.Client{Timeout: cfg.ScraperRequestTimeout},
-		cfg.ScraperUserAgent,
-	)
+	// The fetcher owns its HTTP client so every outbound request goes through
+	// the dial guard that keeps user-supplied feed URLs off the internal network.
+	fetcher := feedfetch.New(feedfetch.Options{
+		UserAgent:             cfg.ScraperUserAgent,
+		Timeout:               cfg.ScraperHTTPTimeout,
+		AllowPrivateAddresses: cfg.ScraperAllowPrivateAddresses,
+	})
+	if cfg.ScraperAllowPrivateAddresses {
+		logger.Warn("scraper may reach private addresses; do not enable this in production")
+	}
 	scr := scraper.New(feedRepo, postRepo, fetcher, clock, ids, logger, scraper.Options{
 		Concurrency:    cfg.ScraperConcurrency,
 		Interval:       cfg.ScraperInterval,

@@ -48,6 +48,16 @@ func TestFeedServiceCreateRejectsBadURLs(t *testing.T) {
 		{name: "ftp scheme", url: "ftp://example.com/feed.xml"},
 		{name: "no host", url: "https://"},
 		{name: "control characters", url: "https://exa\x7fmple.com"},
+		// Courtesy checks: the dial guard in feedfetch is the real boundary,
+		// but the obvious attempts should fail at creation time.
+		{name: "localhost", url: "http://localhost:8080/feed.xml"},
+		{name: "localhost subdomain", url: "http://api.LOCALHOST/feed.xml"},
+		{name: "loopback literal", url: "http://127.0.0.1/feed.xml"},
+		{name: "ipv6 loopback literal", url: "http://[::1]/feed.xml"},
+		{name: "cloud metadata endpoint", url: "http://169.254.169.254/latest/meta-data/"},
+		{name: "ipv4-mapped metadata endpoint", url: "http://[::ffff:169.254.169.254]/latest/meta-data/"},
+		{name: "rfc1918 literal", url: "http://10.0.0.5/feed.xml"},
+		{name: "ipv6 unique local", url: "http://[fd00::1]/feed.xml"},
 	}
 
 	for _, tt := range tests {

@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/matteo-campana/rss-aggregator/internal/domain"
 )
 
+// maxNameLength counts characters, not bytes: len() would reject a 100-character
+// Japanese name as "more than 255 characters", which is both false and
+// unactionable. The column is TEXT, so nothing forces a byte limit.
 const maxNameLength = 255
 
 // UserService implements the user-facing rules: registration and
@@ -31,7 +35,7 @@ func (s *UserService) Create(ctx context.Context, name string) (domain.User, err
 	switch {
 	case name == "":
 		return domain.User{}, domain.NewValidationError("name", "must not be empty")
-	case len(name) > maxNameLength:
+	case utf8.RuneCountInString(name) > maxNameLength:
 		return domain.User{}, domain.NewValidationError("name", fmt.Sprintf("must be at most %d characters", maxNameLength))
 	}
 

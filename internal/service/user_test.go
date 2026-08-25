@@ -61,6 +61,22 @@ func TestUserServiceCreateValidation(t *testing.T) {
 	}
 }
 
+// The limit counts characters, not bytes: counting bytes rejected this name at
+// 300 bytes while telling the caller it exceeded 255 characters.
+func TestUserServiceCreateAcceptsMultiByteName(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeUserRepo{}
+	svc := service.NewUserService(repo, fixedKeys{key: "k"}, fixedClock{}, fixedIDs{})
+
+	name := strings.Repeat("あ", 100) // 100 characters, 300 bytes
+
+	user, err := svc.Create(context.Background(), name)
+
+	require.NoError(t, err)
+	assert.Equal(t, name, user.Name)
+}
+
 func TestUserServiceCreatePropagatesFailures(t *testing.T) {
 	t.Parallel()
 

@@ -52,7 +52,7 @@ func TestFetchParsesRSSWithNumericZoneOffset(t *testing.T) {
 	t.Parallel()
 
 	srv := serve(t, "application/rss+xml", rssWithOffsetDates)
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	feed, err := fetcher.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestFetchParsesAtom(t *testing.T) {
 	t.Parallel()
 
 	srv := serve(t, "application/atom+xml", atomFeed)
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	feed, err := fetcher.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestFetchFallsBackToUpdatedDate(t *testing.T) {
 	t.Parallel()
 
 	srv := serve(t, "application/atom+xml", atomUpdatedOnly)
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	feed, err := fetcher.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestFetchRejectsMalformedFeed(t *testing.T) {
 	t.Parallel()
 
 	srv := serve(t, "application/rss+xml", "<rss><channel><title>oops")
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	_, err := fetcher.Fetch(context.Background(), srv.URL)
 
@@ -151,7 +151,7 @@ func TestFetchReportsHTTPErrors(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	_, err := fetcher.Fetch(context.Background(), srv.URL)
 
@@ -171,7 +171,7 @@ func TestFetchHonoursContextCancellation(t *testing.T) {
 		srv.Close()
 	})
 
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -191,7 +191,7 @@ func TestFetchSendsUserAgent(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	fetcher := feedfetch.New(srv.Client(), "rss-aggregator/test")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "rss-aggregator/test", AllowPrivateAddresses: true})
 
 	_, err := fetcher.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err)
@@ -205,7 +205,7 @@ func TestFetchIsSafeForConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	srv := serve(t, "application/rss+xml", rssWithOffsetDates)
-	fetcher := feedfetch.New(srv.Client(), "test-agent")
+	fetcher := feedfetch.New(feedfetch.Options{UserAgent: "test-agent", AllowPrivateAddresses: true})
 
 	done := make(chan error, 8)
 	for range 8 {

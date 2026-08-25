@@ -2,11 +2,17 @@
 //
 // It is the only package that knows about gofeed; everything upstream works
 // with domain.FetchedFeed, so replacing the parser never reaches past here.
+//
+// It also owns the HTTP client used to reach feeds. That client is built here
+// rather than injected so every fetch necessarily goes through the dial guard
+// in safedial.go: a feed URL comes from an API client, so the connection it
+// causes must never be able to reach the machine's own network.
 package feedfetch
 
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -15,38 +21,82 @@ import (
 	"github.com/matteo-campana/rss-aggregator/internal/domain"
 )
 
+// DefaultMaxBytes is the default per-feed response cap.
+const DefaultMaxBytes int64 = 10 << 20 // 10 MiB
+
+const (
+	defaultTimeout      = 30 * time.Second
+	defaultMaxRedirects = 5
+)
+
+// Options configures a Fetcher.
+type Options struct {
+	UserAgent string
+	// Timeout bounds a single fetch, connection setup included.
+	Timeout time.Duration
+	// MaxBytes caps the response size so one hostile feed cannot exhaust memory.
+	MaxBytes int64
+	// MaxRedirects caps a redirect chain.
+	MaxRedirects int
+	// AllowPrivateAddresses disables the guard that refuses to connect to
+	// loopback, private, link-local and other non-public addresses.
+	//
+	// Leave it false in production: feed URLs are supplied by API clients, and
+	// without the guard one can point the scraper at a cloud metadata endpoint
+	// or an internal service. Tests that serve feeds from localhost set it.
+	AllowPrivateAddresses bool
+}
+
 // Fetcher retrieves feeds over HTTP and parses RSS, Atom and JSON Feed.
 type Fetcher struct {
 	client    *http.Client
 	userAgent string
-	// maxBytes caps the response size so one hostile feed cannot exhaust memory.
-	maxBytes int64
+	maxBytes  int64
 }
 
-// Option customises a Fetcher.
-type Option func(*Fetcher)
-
-// WithMaxBytes caps the number of bytes read from a single feed.
-func WithMaxBytes(n int64) Option {
-	return func(f *Fetcher) { f.maxBytes = n }
-}
-
-// DefaultMaxBytes is the default per-feed response cap.
-const DefaultMaxBytes int64 = 10 << 20 // 10 MiB
-
-// New builds a Fetcher over a shared HTTP client.
-//
-// The client is shared so connections are reused across feeds; the previous
-// implementation built a fresh http.Client for every single fetch.
-func New(client *http.Client, userAgent string, opts ...Option) *Fetcher {
-	if client == nil {
-		client = http.DefaultClient
+// New builds a Fetcher and the HTTP client it uses.
+func New(opts Options) *Fetcher {
+	if opts.Timeout <= 0 {
+		opts.Timeout = defaultTimeout
 	}
-	f := &Fetcher{client: client, userAgent: userAgent, maxBytes: DefaultMaxBytes}
-	for _, opt := range opts {
-		opt(f)
+	if opts.MaxBytes <= 0 {
+		opts.MaxBytes = DefaultMaxBytes
 	}
-	return f
+	if opts.MaxRedirects <= 0 {
+		opts.MaxRedirects = defaultMaxRedirects
+	}
+
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	if !opts.AllowPrivateAddresses {
+		dialer.Control = guardAddress
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = dialer.DialContext
+	// Feeds are many and mostly unrelated hosts; keep a lid on per-host fan-out
+	// so one popular host cannot absorb the whole connection budget.
+	transport.MaxConnsPerHost = 8
+	transport.MaxIdleConnsPerHost = 2
+
+	client := &http.Client{
+		Timeout:   opts.Timeout,
+		Transport: transport,
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			if len(via) >= opts.MaxRedirects {
+				return fmt.Errorf("stopped after %d redirects", opts.MaxRedirects)
+			}
+			return nil
+		},
+	}
+
+	return &Fetcher{
+		client:    client,
+		userAgent: opts.UserAgent,
+		maxBytes:  opts.MaxBytes,
+	}
 }
 
 // Fetch retrieves and parses the feed at url.

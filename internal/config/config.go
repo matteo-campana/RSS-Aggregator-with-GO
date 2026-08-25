@@ -38,6 +38,15 @@ type Config struct {
 	ScraperInterval       time.Duration
 	ScraperRequestTimeout time.Duration
 	ScraperUserAgent      string
+	// ScraperAllowPrivateAddresses lets the scraper reach loopback, private and
+	// link-local addresses. Off by default: feed URLs come from API clients, so
+	// enabling it turns POST /v1/feeds into a server-side request forgery
+	// primitive against the machine's own network.
+	ScraperAllowPrivateAddresses bool
+	// ScraperHTTPTimeout bounds a single HTTP fetch. It must stay below
+	// ScraperRequestTimeout, which is the budget for the whole feed: fetch plus
+	// every post insert.
+	ScraperHTTPTimeout time.Duration
 
 	// Pagination bounds for GET /v1/posts.
 	DefaultPageSize int32
@@ -105,6 +114,17 @@ func Load() (Config, error) {
 	cfg.ScraperRequestTimeout, err = durationEnv("SCRAPER_REQUEST_TIMEOUT", 30*time.Second)
 	collect(err)
 	cfg.ScraperUserAgent = envOr("SCRAPER_USER_AGENT", "rss-aggregator/1.0 (+https://github.com/matteo-campana/rss-aggregator)")
+	cfg.ScraperAllowPrivateAddresses, err = boolEnv("SCRAPER_ALLOW_PRIVATE_ADDRESSES", false)
+	collect(err)
+
+	// Default to two thirds of the feed budget, leaving the remainder for the
+	// inserts that follow the fetch.
+	cfg.ScraperHTTPTimeout, err = durationEnv("SCRAPER_HTTP_TIMEOUT", cfg.ScraperRequestTimeout*2/3)
+	collect(err)
+	if cfg.ScraperHTTPTimeout >= cfg.ScraperRequestTimeout && cfg.ScraperRequestTimeout > 0 {
+		problems = append(problems,
+			"SCRAPER_HTTP_TIMEOUT must be shorter than SCRAPER_REQUEST_TIMEOUT, which also has to cover storing the fetched items")
+	}
 
 	cfg.DefaultPageSize, err = int32Env("DEFAULT_PAGE_SIZE", 10, 1, 1000)
 	collect(err)
@@ -170,6 +190,18 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, errors.New(key + " must be positive")
 	}
 	return d, nil
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean such as true or false, got %q", key, raw)
+	}
+	return v, nil
 }
 
 func int32Env(key string, fallback, minValue, maxValue int32) (int32, error) {
