@@ -25,7 +25,7 @@ type UserRepository interface {
 // interface: it needs scheduling operations, not creation.
 type FeedRepository interface {
 	Create(ctx context.Context, f domain.Feed) (domain.Feed, error)
-	List(ctx context.Context) ([]domain.Feed, error)
+	List(ctx context.Context, limit, offset int32) ([]domain.Feed, error)
 }
 
 // FeedFollowRepository persists the user-to-feed relation.

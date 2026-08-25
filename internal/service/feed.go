@@ -13,14 +13,27 @@ import (
 
 // FeedService implements the rules for registering and listing feeds.
 type FeedService struct {
-	repo  FeedRepository
-	clock Clock
-	ids   IDGenerator
+	repo            FeedRepository
+	clock           Clock
+	ids             IDGenerator
+	defaultPageSize int32
+	maxPageSize     int32
 }
 
-// NewFeedService wires a FeedService with its dependencies.
-func NewFeedService(repo FeedRepository, clock Clock, ids IDGenerator) *FeedService {
-	return &FeedService{repo: repo, clock: clock, ids: ids}
+// NewFeedService wires a FeedService with its dependencies and pagination bounds.
+func NewFeedService(
+	repo FeedRepository,
+	clock Clock,
+	ids IDGenerator,
+	defaultPageSize, maxPageSize int32,
+) *FeedService {
+	return &FeedService{
+		repo:            repo,
+		clock:           clock,
+		ids:             ids,
+		defaultPageSize: defaultPageSize,
+		maxPageSize:     maxPageSize,
+	}
 }
 
 // Create registers a feed owned by the given user.
@@ -53,9 +66,14 @@ func (s *FeedService) Create(ctx context.Context, userID uuid.UUID, name, rawURL
 	return feed, nil
 }
 
-// List returns every registered feed.
-func (s *FeedService) List(ctx context.Context) ([]domain.Feed, error) {
-	feeds, err := s.repo.List(ctx)
+// List returns a page of registered feeds, newest first.
+//
+// This endpoint is public and previously returned the whole table, so the
+// response grew without bound as feeds were added.
+func (s *FeedService) List(ctx context.Context, limit, offset int32) ([]domain.Feed, error) {
+	limit, offset = clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
+
+	feeds, err := s.repo.List(ctx, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds: %w", err)
 	}

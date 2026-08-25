@@ -41,9 +41,12 @@ func (r *FeedRepository) Create(ctx context.Context, f domain.Feed) (domain.Feed
 	return toDomainFeed(row), nil
 }
 
-// List returns every feed.
-func (r *FeedRepository) List(ctx context.Context) ([]domain.Feed, error) {
-	rows, err := r.q.GetFeeds(ctx)
+// List returns a page of feeds, newest first.
+func (r *FeedRepository) List(ctx context.Context, limit, offset int32) ([]domain.Feed, error) {
+	rows, err := r.q.GetFeeds(ctx, sqlc.GetFeedsParams{
+		Limit:  limit,
+		Offset: offset,
+	})
 	if err != nil {
 		return nil, translate(err)
 	}

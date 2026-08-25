@@ -98,6 +98,42 @@ func TestListFeedsIsPublicAndReturnsArray(t *testing.T) {
 	assert.Equal(t, "[]", bodyString(t, resp))
 }
 
+func TestListFeedsPassesPagination(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantLimit  int32
+		wantOffset int32
+	}{
+		{name: "no parameters", query: "", wantStatus: nethttp.StatusOK},
+		{name: "limit and offset", query: "?limit=25&offset=50", wantStatus: nethttp.StatusOK, wantLimit: 25, wantOffset: 50},
+		{name: "non numeric limit", query: "?limit=all", wantStatus: nethttp.StatusBadRequest},
+		{name: "negative limit", query: "?limit=-1", wantStatus: nethttp.StatusBadRequest},
+		{name: "negative offset", query: "?offset=-1", wantStatus: nethttp.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+
+			// This route is public: no API key.
+			resp := h.do(t, nethttp.MethodGet, "/v1/feeds"+tt.query, "", "")
+
+			require.Equal(t, tt.wantStatus, resp.StatusCode)
+			if tt.wantStatus != nethttp.StatusOK {
+				return
+			}
+			assert.Equal(t, tt.wantLimit, h.feeds.gotLimit)
+			assert.Equal(t, tt.wantOffset, h.feeds.gotOffset)
+		})
+	}
+}
+
 func TestCreateFeed(t *testing.T) {
 	t.Parallel()
 

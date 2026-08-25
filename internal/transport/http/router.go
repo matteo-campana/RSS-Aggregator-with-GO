@@ -27,7 +27,7 @@ type UserService interface {
 // FeedService registers and lists feeds.
 type FeedService interface {
 	Create(ctx context.Context, userID uuid.UUID, name, url string) (domain.Feed, error)
-	List(ctx context.Context) ([]domain.Feed, error)
+	List(ctx context.Context, limit, offset int32) ([]domain.Feed, error)
 }
 
 // FeedFollowService manages the follow relation.

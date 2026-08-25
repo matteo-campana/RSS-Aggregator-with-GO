@@ -48,7 +48,7 @@ header; the key is returned by `POST /v1/users`.
 |---|---|---|---|
 | GET | `/v1/healthz` | – | Liveness probe |
 | POST | `/v1/users` | – | Register a user, returns its API key |
-| GET | `/v1/feeds` | – | List all feeds |
+| GET | `/v1/feeds` | – | List feeds, newest first |
 | GET | `/v1/users` | ✔ | The authenticated user |
 | POST | `/v1/feeds` | ✔ | Register a feed |
 | GET | `/v1/feed_follows` | ✔ | Feeds the user follows |
@@ -56,8 +56,9 @@ header; the key is returned by `POST /v1/users`.
 | DELETE | `/v1/feed_follows/{feed_follow_id}` | ✔ | Unfollow a feed |
 | GET | `/v1/posts` | ✔ | Posts from followed feeds, newest first |
 
-`GET /v1/posts` accepts `limit` and `offset` query parameters. `limit` defaults to
-`DEFAULT_PAGE_SIZE` and is capped at `MAX_PAGE_SIZE`.
+`GET /v1/posts` and `GET /v1/feeds` accept `limit` and `offset` query parameters. `limit`
+defaults to `DEFAULT_PAGE_SIZE` and is capped at `MAX_PAGE_SIZE`. Feeds are ordered by
+`created_at DESC, id DESC`, a total order, so paging is stable across calls.
 
 Errors are returned as `{"error": "..."}` with a status of 400, 401, 404, 409 or 500.
 
@@ -132,6 +133,9 @@ This release corrects several defects; the following responses differ from earli
   (it previously returned 200 either way).
 - `GET /v1/posts` returns the **newest** posts first (it previously returned the oldest) and
   takes `limit`/`offset` instead of a fixed page of 10.
+- `GET /v1/feeds` is **paginated**. It previously returned the entire table on an
+  unauthenticated route, so the response grew without bound as feeds were added; it now
+  returns `DEFAULT_PAGE_SIZE` feeds unless `limit`/`offset` say otherwise.
 - Missing or malformed credentials return **401** with a `WWW-Authenticate` header, not 403.
 - Error bodies no longer echo raw database messages.
 - `GET /v1/err`, a debug endpoint that only ever returned a canned 400, has been removed.

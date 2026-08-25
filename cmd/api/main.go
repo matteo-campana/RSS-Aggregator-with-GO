@@ -76,7 +76,7 @@ func run() error {
 
 	// Application services.
 	userSvc := service.NewUserService(userRepo, keys, clock, ids)
-	feedSvc := service.NewFeedService(feedRepo, clock, ids)
+	feedSvc := service.NewFeedService(feedRepo, clock, ids, cfg.DefaultPageSize, cfg.MaxPageSize)
 	followSvc := service.NewFeedFollowService(followRepo, clock, ids)
 	postSvc := service.NewPostService(postRepo, cfg.DefaultPageSize, cfg.MaxPageSize)
 

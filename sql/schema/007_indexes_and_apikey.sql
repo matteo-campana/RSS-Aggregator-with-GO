@@ -1,7 +1,12 @@
 -- +goose Up
 
--- GetPostsForUser joins on posts.feed_id and orders by published_at DESC.
--- A composite index serves both halves of that query.
+-- Backs the posts.feed_id side of the GetPostsForUser join.
+--
+-- It does NOT back that query's ORDER BY posts.published_at DESC: the index
+-- orders rows within each feed_id, not globally, and no plan shape turns that
+-- into a globally sorted stream across the join. EXPLAIN ANALYZE on 60k posts
+-- confirms a Hash Join materialising every matching row followed by a top-N
+-- sort. A posts (published_at DESC) index would be needed for that.
 CREATE INDEX IF NOT EXISTS idx_posts_feed_id_published_at
     ON posts (feed_id, published_at DESC);
 

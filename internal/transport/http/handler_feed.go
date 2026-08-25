@@ -27,8 +27,22 @@ func (s *server) handleCreateFeed(w http.ResponseWriter, r *http.Request, user d
 	s.respond(w, http.StatusCreated, newFeedResponse(feed))
 }
 
+// handleListFeeds returns a page of feeds, newest first. This route is public,
+// so the page bounds are what stop an anonymous caller dumping the whole table.
 func (s *server) handleListFeeds(w http.ResponseWriter, r *http.Request) {
-	feeds, err := s.feeds.List(r.Context())
+	limit, err := int32Query(r.URL.Query().Get("limit"), "limit")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	offset, err := int32Query(r.URL.Query().Get("offset"), "offset")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	feeds, err := s.feeds.List(r.Context(), limit, offset)
 	if err != nil {
 		s.fail(w, r, err)
 		return

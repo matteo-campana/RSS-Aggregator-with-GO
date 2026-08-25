@@ -13,6 +13,12 @@ import (
 // errBoom stands in for any unexpected infrastructure failure.
 var errBoom = errors.New("boom")
 
+// Pagination bounds shared by the paginated-listing tests.
+const (
+	defaultPageSize int32 = 10
+	maxPageSize     int32 = 100
+)
+
 // fixedClock returns a constant time so assertions can compare exactly.
 type fixedClock struct{ now time.Time }
 
@@ -64,6 +70,8 @@ type fakeFeedRepo struct {
 	listErr   error
 
 	lastCreated domain.Feed
+	gotLimit    int32
+	gotOffset   int32
 }
 
 func (r *fakeFeedRepo) Create(_ context.Context, f domain.Feed) (domain.Feed, error) {
@@ -74,7 +82,8 @@ func (r *fakeFeedRepo) Create(_ context.Context, f domain.Feed) (domain.Feed, er
 	return f, nil
 }
 
-func (r *fakeFeedRepo) List(_ context.Context) ([]domain.Feed, error) {
+func (r *fakeFeedRepo) List(_ context.Context, limit, offset int32) ([]domain.Feed, error) {
+	r.gotLimit, r.gotOffset = limit, offset
 	if r.listErr != nil {
 		return nil, r.listErr
 	}

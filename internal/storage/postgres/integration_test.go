@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/matteo-campana/rss-aggregator/internal/apikey"
 	"github.com/matteo-campana/rss-aggregator/internal/domain"
 	"github.com/matteo-campana/rss-aggregator/internal/storage/postgres"
 	"github.com/matteo-campana/rss-aggregator/internal/storage/postgres/sqlc"
@@ -62,13 +63,18 @@ func setup(t *testing.T) (context.Context, *repos) {
 func newUser(ctx context.Context, t *testing.T, r *repos) domain.User {
 	t.Helper()
 
+	// Use the production generator rather than an ad-hoc string: it also pins
+	// that its output actually fits users.api_key VARCHAR(64).
+	key, err := apikey.Generator{}.Generate()
+	require.NoError(t, err)
+
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	user, err := r.users.Create(ctx, domain.User{
 		ID:        uuid.New(),
 		CreatedAt: now,
 		UpdatedAt: now,
 		Name:      "test-" + uuid.NewString(),
-		APIKey:    uuid.NewString() + uuid.NewString(),
+		APIKey:    key,
 	})
 	require.NoError(t, err)
 
@@ -114,6 +120,48 @@ func TestGetUserByAPIKeyReportsNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
+// Without the UNIQUE index from migration 008 two users could share an API
+// key, and GetUserByApiKey (:one, so pgx QueryRow) would silently authenticate
+// whichever row the planner emitted first.
+func TestDuplicateAPIKeyIsRejected(t *testing.T) {
+	ctx, r := setup(t)
+	first := newUser(ctx, t, r)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, err := r.users.Create(ctx, domain.User{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      "collision",
+		APIKey:    first.APIKey,
+	})
+
+	assert.ErrorIs(t, err, domain.ErrConflict)
+}
+
+// Pins the reason the index exists, not merely its presence: the auth lookup
+// runs on 6 of the 9 routes and used to be a sequential scan.
+func TestGetUserByAPIKeyUsesTheIndex(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+
+	rows, err := r.pool.Query(ctx,
+		"EXPLAIN (COSTS OFF) SELECT * FROM users WHERE api_key = $1", user.APIKey)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var plan string
+	for rows.Next() {
+		var line string
+		require.NoError(t, rows.Scan(&line))
+		plan += line + "\n"
+	}
+	require.NoError(t, rows.Err())
+
+	assert.Contains(t, plan, "Index Scan", "the api_key lookup must use idx_users_api_key")
+	assert.NotContains(t, plan, "Seq Scan", "the auth path must never sequentially scan users")
+}
+
 func TestDuplicateFeedURLIsConflict(t *testing.T) {
 	ctx, r := setup(t)
 	user := newUser(ctx, t, r)
@@ -139,7 +187,7 @@ func TestFeedFetchScheduling(t *testing.T) {
 	at := time.Now().UTC().Truncate(time.Microsecond)
 	require.NoError(t, r.feeds.MarkFetched(ctx, feed.ID, at))
 
-	feeds, err := r.feeds.List(ctx)
+	feeds, err := r.feeds.List(ctx, 100, 0)
 	require.NoError(t, err)
 
 	var found *domain.Feed
@@ -152,6 +200,32 @@ func TestFeedFetchScheduling(t *testing.T) {
 	require.NotNil(t, found)
 	require.NotNil(t, found.LastFetchedAt)
 	assert.WithinDuration(t, at, *found.LastFetchedAt, time.Second)
+}
+
+// GET /v1/feeds is public and used to return the whole table.
+func TestFeedPagination(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+
+	for range 5 {
+		newFeed(ctx, t, r, user)
+	}
+
+	first, err := r.feeds.List(ctx, 2, 0)
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+
+	second, err := r.feeds.List(ctx, 2, 2)
+	require.NoError(t, err)
+	require.Len(t, second, 2)
+
+	assert.NotEqual(t, first[0].ID, second[0].ID, "offset must move the window")
+	assert.NotEqual(t, first[1].ID, second[0].ID, "pages must not overlap")
+
+	// created_at DESC, id DESC is a total order, so paging is deterministic.
+	again, err := r.feeds.List(ctx, 2, 0)
+	require.NoError(t, err)
+	assert.Equal(t, first, again, "the same page must be stable across calls")
 }
 
 func TestFollowingAnUnknownFeedIsNotFound(t *testing.T) {

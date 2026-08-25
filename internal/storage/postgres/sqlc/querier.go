@@ -19,7 +19,9 @@ type Querier interface {
 	// "no such follow for this user" and answer 404 instead of a silent 200.
 	DeleteFeedFollow(ctx context.Context, arg DeleteFeedFollowParams) (int64, error)
 	GetFeedFollows(ctx context.Context, userID uuid.UUID) ([]FeedFollow, error)
-	GetFeeds(ctx context.Context) ([]Feed, error)
+	// The trailing id keeps the ordering total, so a page boundary cannot repeat
+	// or skip a feed when several share a created_at.
+	GetFeeds(ctx context.Context, arg GetFeedsParams) ([]Feed, error)
 	GetNextFeedsToFetch(ctx context.Context, limit int32) ([]Feed, error)
 	GetPostsForUser(ctx context.Context, arg GetPostsForUserParams) ([]Post, error)
 	GetUserByApiKey(ctx context.Context, apiKey string) (User, error)

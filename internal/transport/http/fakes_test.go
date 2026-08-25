@@ -45,6 +45,8 @@ type fakeFeedService struct {
 
 	gotName, gotURL string
 	gotUserID       uuid.UUID
+	gotLimit        int32
+	gotOffset       int32
 }
 
 func (s *fakeFeedService) Create(_ context.Context, userID uuid.UUID, name, url string) (domain.Feed, error) {
@@ -55,7 +57,8 @@ func (s *fakeFeedService) Create(_ context.Context, userID uuid.UUID, name, url 
 	return s.feed, nil
 }
 
-func (s *fakeFeedService) List(_ context.Context) ([]domain.Feed, error) {
+func (s *fakeFeedService) List(_ context.Context, limit, offset int32) ([]domain.Feed, error) {
+	s.gotLimit, s.gotOffset = limit, offset
 	if s.listErr != nil {
 		return nil, s.listErr
 	}

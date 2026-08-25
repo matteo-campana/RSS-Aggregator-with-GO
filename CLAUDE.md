@@ -98,6 +98,8 @@ its translators, which races when shared — while reusing one `http.Client`.
 - Handlers respond only via `s.respond` / `s.fail`; never call `w.Write` or `json.Marshal`
   directly, and never put a raw error string in a client response.
 - All timestamps are UTC, always via the injected `Clock`.
+- Paginated listings share `service.clampPage` and the transport's `int32Query`; a new listing
+  reuses both rather than reimplementing the bounds. No listing query may omit `LIMIT`.
 - Authenticated handlers have the signature `func(http.ResponseWriter, *http.Request, domain.User)`
   and are wrapped with `s.requireUser(...)`.
 - Never call `log.Fatal` outside `main` — an earlier version did this inside request handlers
@@ -110,5 +112,7 @@ its translators, which races when shared — while reusing one `http.Client`.
   in `fakes_test.go` in each package.
 - DB-backed tests are behind `//go:build integration` and skip unless `TEST_DB_URL` is set;
   they validate the real SQL and the SQLSTATE mapping. Run with
-  `TEST_DB_URL=... make test-integration`.
+  `TEST_DB_URL=... make test-integration`. They catch what fakes cannot: column widths,
+  constraint behaviour and query plans. Build a user with `apikey.Generator` rather than an
+  ad-hoc string, so the fixture stays inside `users.api_key VARCHAR(64)`.
 - Tests that call `t.Setenv` cannot use `t.Parallel()`.

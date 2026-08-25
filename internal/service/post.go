@@ -40,14 +40,5 @@ func (s *PostService) ListForUser(ctx context.Context, userID uuid.UUID, limit, 
 }
 
 func (s *PostService) clamp(limit, offset int32) (int32, int32) {
-	switch {
-	case limit <= 0:
-		limit = s.defaultPageSize
-	case limit > s.maxPageSize:
-		limit = s.maxPageSize
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return limit, offset
+	return clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
 }

@@ -14,11 +14,6 @@ import (
 func TestPostServiceClampsPagination(t *testing.T) {
 	t.Parallel()
 
-	const (
-		defaultPageSize int32 = 10
-		maxPageSize     int32 = 100
-	)
-
 	tests := []struct {
 		name       string
 		limit      int32
