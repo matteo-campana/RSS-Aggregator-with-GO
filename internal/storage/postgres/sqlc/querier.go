@@ -29,6 +29,9 @@ type Querier interface {
 	// that were just fetched, with the duplicate inserts absorbed as conflicts so
 	// nothing surfaces in the logs.
 	GetNextFeedsToFetch(ctx context.Context, arg GetNextFeedsToFetchParams) ([]Feed, error)
+	// The trailing id keeps the ordering total: published_at alone lets two posts
+	// sharing a timestamp swap places between calls, so a page boundary could
+	// repeat one and skip the other.
 	GetPostsForUser(ctx context.Context, arg GetPostsForUserParams) ([]Post, error)
 	GetUserByApiKey(ctx context.Context, apiKey string) (User, error)
 	// updated_at is deliberately left alone: it describes the feed's own

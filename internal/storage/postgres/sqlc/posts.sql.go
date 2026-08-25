@@ -58,7 +58,7 @@ const getPostsForUser = `-- name: GetPostsForUser :many
 SELECT posts.id, posts.created_at, posts.updated_at, posts.title, posts.description, posts.published_at, posts.url, posts.feed_id FROM posts
 JOIN feed_follows ON posts.feed_id = feed_follows.feed_id
 WHERE feed_follows.user_id = $1
-ORDER BY posts.published_at DESC
+ORDER BY posts.published_at DESC, posts.id DESC
 LIMIT $2 OFFSET $3
 `
 
@@ -68,6 +68,9 @@ type GetPostsForUserParams struct {
 	Offset int32
 }
 
+// The trailing id keeps the ordering total: published_at alone lets two posts
+// sharing a timestamp swap places between calls, so a page boundary could
+// repeat one and skip the other.
 func (q *Queries) GetPostsForUser(ctx context.Context, arg GetPostsForUserParams) ([]Post, error) {
 	rows, err := q.db.Query(ctx, getPostsForUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {

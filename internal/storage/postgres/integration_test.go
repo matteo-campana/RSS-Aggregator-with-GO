@@ -396,6 +396,47 @@ func TestPostsAreReturnedNewestFirst(t *testing.T) {
 		"posts must come back newest first")
 }
 
+// published_at alone is not a total order, so posts sharing a timestamp could
+// swap places between calls and a page boundary could repeat one and skip
+// another. The id tiebreaker makes paging deterministic.
+func TestPostPagingIsStableWhenTimestampsTie(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+	feed := newFeed(ctx, t, r, user)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, err := r.follows.Create(ctx, domain.FeedFollow{
+		ID: uuid.New(), CreatedAt: now, UpdatedAt: now, UserID: user.ID, FeedID: feed.ID,
+	})
+	require.NoError(t, err)
+
+	// Every post shares the same published_at.
+	for range 10 {
+		require.NoError(t, r.posts.Create(ctx, domain.Post{
+			ID: uuid.New(), CreatedAt: now, UpdatedAt: now,
+			PublishedAt: now, URL: "https://example.com/" + uuid.NewString(), FeedID: feed.ID,
+		}))
+	}
+
+	var pagedIDs []uuid.UUID
+	for offset := int32(0); offset < 10; offset += 2 {
+		page, err := r.posts.ListForUser(ctx, user.ID, 2, offset)
+		require.NoError(t, err)
+		require.Len(t, page, 2)
+		for _, p := range page {
+			pagedIDs = append(pagedIDs, p.ID)
+		}
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(pagedIDs))
+	for _, id := range pagedIDs {
+		_, duplicate := seen[id]
+		assert.False(t, duplicate, "paging repeated a post across page boundaries")
+		seen[id] = struct{}{}
+	}
+	assert.Len(t, seen, 10, "paging must visit every post exactly once")
+}
+
 func TestDuplicatePostURLInSameFeedIsConflict(t *testing.T) {
 	ctx, r := setup(t)
 	user := newUser(ctx, t, r)
