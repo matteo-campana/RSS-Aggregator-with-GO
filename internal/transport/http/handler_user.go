@@ -12,7 +12,7 @@ type createUserRequest struct {
 
 func (s *server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
-	if err := decodeJSON(w, r, &req); err != nil {
+	if err := decodeJSON(r, &req); err != nil {
 		s.fail(w, r, err)
 		return
 	}

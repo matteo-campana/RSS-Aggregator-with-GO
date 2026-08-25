@@ -15,7 +15,7 @@ type createFeedFollowRequest struct {
 
 func (s *server) handleCreateFeedFollow(w http.ResponseWriter, r *http.Request, user domain.User) {
 	var req createFeedFollowRequest
-	if err := decodeJSON(w, r, &req); err != nil {
+	if err := decodeJSON(r, &req); err != nil {
 		s.fail(w, r, err)
 		return
 	}

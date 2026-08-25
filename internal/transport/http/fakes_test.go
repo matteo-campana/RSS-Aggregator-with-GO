@@ -12,16 +12,20 @@ import (
 var errBoom = errors.New("boom")
 
 type fakeUserService struct {
-	user       domain.User
-	createErr  error
-	authErr    error
-	gotName    string
-	gotAPIKey  string
-	authCalled bool
+	user         domain.User
+	createErr    error
+	authErr      error
+	gotName      string
+	gotAPIKey    string
+	authCalled   bool
+	createPanics bool
 }
 
 func (s *fakeUserService) Create(_ context.Context, name string) (domain.User, error) {
 	s.gotName = name
+	if s.createPanics {
+		panic("boom from a handler")
+	}
 	if s.createErr != nil {
 		return domain.User{}, s.createErr
 	}

@@ -30,15 +30,14 @@ func NewPostService(repo PostRepository, defaultPageSize, maxPageSize int32) *Po
 // The page size was previously hard-coded to 10 in the handler; it is now
 // caller-supplied and clamped here so no client can ask for an unbounded scan.
 func (s *PostService) ListForUser(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]domain.Post, error) {
-	limit, offset = s.clamp(limit, offset)
+	limit, offset, err := clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
+	if err != nil {
+		return nil, err
+	}
 
 	posts, err := s.repo.ListForUser(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list posts: %w", err)
 	}
 	return posts, nil
-}
-
-func (s *PostService) clamp(limit, offset int32) (int32, int32) {
-	return clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
 }

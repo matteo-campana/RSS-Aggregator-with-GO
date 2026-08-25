@@ -13,7 +13,7 @@ type createFeedRequest struct {
 
 func (s *server) handleCreateFeed(w http.ResponseWriter, r *http.Request, user domain.User) {
 	var req createFeedRequest
-	if err := decodeJSON(w, r, &req); err != nil {
+	if err := decodeJSON(r, &req); err != nil {
 		s.fail(w, r, err)
 		return
 	}

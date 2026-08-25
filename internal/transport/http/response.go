@@ -24,9 +24,11 @@ type errorResponse struct {
 func (s *server) respond(w http.ResponseWriter, status int, payload any) {
 	body, err := json.Marshal(payload)
 	if err != nil {
+		// http.Error would set Content-Type: text/plain while writing a JSON
+		// body, so the fallback is written by hand.
 		s.log.Error("marshal response", "error", err)
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-		return
+		body = []byte(`{"error":"internal server error"}`)
+		status = http.StatusInternalServerError
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -52,8 +54,14 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	s.respond(w, status, errorResponse{Error: clientMessage(err)})
 }
 
+// errRequestTooLarge is transport-specific: it has no meaning to the domain,
+// but it must not be reported as malformed JSON.
+var errRequestTooLarge = errors.New("request body too large")
+
 func statusFor(err error) int {
 	switch {
+	case errors.Is(err, errRequestTooLarge):
+		return http.StatusRequestEntityTooLarge
 	case errors.Is(err, domain.ErrInvalidInput):
 		return http.StatusBadRequest
 	case errors.Is(err, domain.ErrUnauthorized):
@@ -77,6 +85,8 @@ func clientMessage(err error) string {
 	}
 
 	switch {
+	case errors.Is(err, errRequestTooLarge):
+		return "request body too large"
 	case errors.Is(err, domain.ErrInvalidInput):
 		return "invalid input"
 	case errors.Is(err, domain.ErrUnauthorized):
@@ -90,10 +100,17 @@ func clientMessage(err error) string {
 	}
 }
 
-// decodeJSON reads a JSON request body, bounding its size.
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+// decodeJSON reads a JSON request body. The size limit is applied by the
+// limitBody middleware, which runs before the response writer is wrapped so
+// that MaxBytesReader can mark the connection for closing.
+func decodeJSON(r *http.Request, dst any) error {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		// An oversized body is not malformed JSON, and telling the caller their
+		// valid payload is invalid sends them looking in the wrong place.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return errRequestTooLarge
+		}
 		return domain.NewValidationError("body", "must be a valid JSON object")
 	}
 	return nil

@@ -73,7 +73,10 @@ func (s *FeedService) Create(ctx context.Context, userID uuid.UUID, name, rawURL
 // This endpoint is public and previously returned the whole table, so the
 // response grew without bound as feeds were added.
 func (s *FeedService) List(ctx context.Context, limit, offset int32) ([]domain.Feed, error) {
-	limit, offset = clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
+	limit, offset, err := clampPage(limit, offset, s.defaultPageSize, s.maxPageSize)
+	if err != nil {
+		return nil, err
+	}
 
 	feeds, err := s.repo.List(ctx, limit, offset)
 	if err != nil {
