@@ -92,12 +92,22 @@ func (q *Queries) GetFeeds(ctx context.Context, arg GetFeedsParams) ([]Feed, err
 
 const getNextFeedsToFetch = `-- name: GetNextFeedsToFetch :many
 SELECT id, created_at, updated_at, name, url, user_id, last_fetched_at FROM feeds
+WHERE last_fetched_at IS NULL OR last_fetched_at < $2
 ORDER BY last_fetched_at ASC NULLS FIRST
 LIMIT $1
 `
 
-func (q *Queries) GetNextFeedsToFetch(ctx context.Context, limit int32) ([]Feed, error) {
-	rows, err := q.db.Query(ctx, getNextFeedsToFetch, limit)
+type GetNextFeedsToFetchParams struct {
+	Limit         int32
+	LastFetchedAt *time.Time
+}
+
+// Only feeds that are actually due are returned. Without the predicate every
+// replica of the API selects the same batch on every tick and refetches feeds
+// that were just fetched, with the duplicate inserts absorbed as conflicts so
+// nothing surfaces in the logs.
+func (q *Queries) GetNextFeedsToFetch(ctx context.Context, arg GetNextFeedsToFetchParams) ([]Feed, error) {
+	rows, err := q.db.Query(ctx, getNextFeedsToFetch, arg.Limit, arg.LastFetchedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +136,7 @@ func (q *Queries) GetNextFeedsToFetch(ctx context.Context, limit int32) ([]Feed,
 
 const markFeedAsFetched = `-- name: MarkFeedAsFetched :one
 UPDATE feeds
-SET last_fetched_at = $2,
-    updated_at = $2
+SET last_fetched_at = $2
 WHERE id = $1
 RETURNING id, created_at, updated_at, name, url, user_id, last_fetched_at
 `
@@ -137,6 +146,9 @@ type MarkFeedAsFetchedParams struct {
 	LastFetchedAt *time.Time
 }
 
+// updated_at is deliberately left alone: it describes the feed's own
+// attributes, and bumping it on every pass made clients polling GET /v1/feeds
+// see every feed change once per interval when nothing had.
 func (q *Queries) MarkFeedAsFetched(ctx context.Context, arg MarkFeedAsFetchedParams) (Feed, error) {
 	row := q.db.QueryRow(ctx, markFeedAsFetched, arg.ID, arg.LastFetchedAt)
 	var i Feed

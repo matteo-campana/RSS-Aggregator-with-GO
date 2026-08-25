@@ -129,8 +129,16 @@ func run() error {
 	scraperDone := make(chan struct{})
 	go func() {
 		defer close(scraperDone)
+
 		if err := scr.Run(ctx); err != nil {
 			failures <- fmt.Errorf("scraper: %w", err)
+			return
+		}
+		// Run returning without an error before shutdown was requested means
+		// the scraper stopped on its own. Reporting it is what stops the
+		// process serving HTTP with a dead scraper and nothing observing it.
+		if ctx.Err() == nil {
+			failures <- errors.New("scraper stopped unexpectedly")
 		}
 	}()
 
@@ -154,20 +162,32 @@ func shutdown(
 	logger *slog.Logger,
 	runErr error,
 ) error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	httpCtx, cancelHTTP := context.WithTimeout(context.Background(), timeout)
+	defer cancelHTTP()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	if err := srv.Shutdown(httpCtx); err != nil {
 		logger.Error("http server shutdown", "error", err)
 		if runErr == nil {
 			runErr = fmt.Errorf("http server shutdown: %w", err)
 		}
 	}
 
+	// A fresh deadline for the second wait. Draining connections can legitimately
+	// consume the whole first one, and reusing it would declare the scraper
+	// stuck without ever waiting for it.
+	scraperCtx, cancelScraper := context.WithTimeout(context.Background(), timeout)
+	defer cancelScraper()
+
+	// Check for completion first: when both channels are ready select picks at
+	// random, which produced a spurious warning about half the time.
 	select {
 	case <-scraperDone:
-	case <-shutdownCtx.Done():
-		logger.Warn("scraper did not stop before the shutdown deadline")
+	default:
+		select {
+		case <-scraperDone:
+		case <-scraperCtx.Done():
+			logger.Warn("scraper did not stop before the shutdown deadline")
+		}
 	}
 
 	logger.Info("shutdown complete")

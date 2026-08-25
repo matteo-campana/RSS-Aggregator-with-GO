@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -37,20 +38,26 @@ func (g *seqIDs) NewID() uuid.UUID {
 type fakeFeedRepo struct {
 	mu sync.Mutex
 
-	feeds       []domain.Feed
-	nextErr     error
-	markErr     error
-	marked      []uuid.UUID
-	markedAt    []time.Time
-	nextCalls   int
-	gotBatchCap int32
+	feeds              []domain.Feed
+	nextErr            error
+	markErr            error
+	marked             []uuid.UUID
+	markedAt           []time.Time
+	nextCalls          int
+	gotBatchCap        int32
+	gotNotFetchedSince time.Time
 }
 
-func (r *fakeFeedRepo) NextToFetch(_ context.Context, limit int32) ([]domain.Feed, error) {
+func (r *fakeFeedRepo) NextToFetch(
+	_ context.Context,
+	limit int32,
+	notFetchedSince time.Time,
+) ([]domain.Feed, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.nextCalls++
 	r.gotBatchCap = limit
+	r.gotNotFetchedSince = notFetchedSince
 	if r.nextErr != nil {
 		return nil, r.nextErr
 	}
@@ -77,18 +84,26 @@ func (r *fakeFeedRepo) markedIDs() []uuid.UUID {
 type fakePostWriter struct {
 	mu sync.Mutex
 
-	created []domain.Post
-	err     error
+	created   []domain.Post
+	err       error
+	attempted int
 }
 
 func (w *fakePostWriter) Create(_ context.Context, p domain.Post) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.attempted++
 	if w.err != nil {
 		return w.err
 	}
 	w.created = append(w.created, p)
 	return nil
+}
+
+func (w *fakePostWriter) attempts() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.attempted
 }
 
 func (w *fakePostWriter) posts() []domain.Post {
@@ -189,6 +204,30 @@ func TestScraperStoresItems(t *testing.T) {
 
 	assert.Equal(t, []uuid.UUID{feedID}, feeds.markedIDs())
 	assert.Equal(t, int32(2), feeds.gotBatchCap, "the batch is bounded by the concurrency")
+
+	// Only feeds a full interval stale are due; without this every replica
+	// refetches the same feeds on every tick.
+	assert.Equal(t, now.Add(-time.Hour), feeds.gotNotFetchedSince)
+}
+
+// The feed can be deleted while it is being fetched. Every remaining item then
+// fails its foreign key, and reporting that once beats one error line per item.
+func TestScraperStopsWhenFeedIsRemovedMidScrape(t *testing.T) {
+	t.Parallel()
+
+	feeds := &fakeFeedRepo{feeds: []domain.Feed{{ID: uuid.New(), URL: "https://example.com/feed"}}}
+	posts := &fakePostWriter{err: domain.ErrNotFound}
+
+	items := make([]domain.FetchedItem, 50)
+	for i := range items {
+		items[i] = domain.FetchedItem{Link: "https://example.com/" + strconv.Itoa(i)}
+	}
+	fetcher := &fakeFetcher{feed: domain.FetchedFeed{Items: items}}
+
+	runOnePass(t, newScraper(t, feeds, posts, fetcher, time.Now().UTC()))
+
+	assert.Equal(t, 1, posts.attempts(),
+		"the loop must stop at the first foreign-key failure, not retry every item")
 }
 
 // A duplicate URL is the expected steady state once a feed has been seen; it

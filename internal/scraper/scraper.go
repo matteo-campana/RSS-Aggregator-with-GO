@@ -21,7 +21,9 @@ import (
 // FeedRepository supplies the scheduling half of feed storage. It deliberately
 // cannot create or list feeds: that is the service layer's concern.
 type FeedRepository interface {
-	NextToFetch(ctx context.Context, limit int32) ([]domain.Feed, error)
+	// NextToFetch returns feeds never fetched, or last fetched before
+	// notFetchedSince, oldest first.
+	NextToFetch(ctx context.Context, limit int32, notFetchedSince time.Time) ([]domain.Feed, error)
 	MarkFetched(ctx context.Context, id uuid.UUID, at time.Time) error
 }
 
@@ -138,7 +140,10 @@ func (s *Scraper) Run(ctx context.Context) error {
 
 // runOnce performs a single scraping pass over one batch of feeds.
 func (s *Scraper) runOnce(ctx context.Context) {
-	feeds, err := s.feeds.NextToFetch(ctx, s.opts.Concurrency)
+	// A feed is due once a full interval has passed since it was last fetched.
+	notFetchedSince := s.clock.Now().Add(-s.opts.Interval)
+
+	feeds, err := s.feeds.NextToFetch(ctx, s.opts.Concurrency, notFetchedSince)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.log.Error("select feeds to fetch", "error", err)
@@ -193,9 +198,14 @@ func (s *Scraper) scrapeFeed(ctx context.Context, feed domain.Feed) {
 		return
 	}
 
-	var created, duplicates, skipped int
+	var created, duplicates, skipped, failed, processed int
+	var stopReason string
+
 	for _, item := range fetched.Items {
-		switch err := s.savePost(ctx, feed, item); {
+		err := s.savePost(ctx, feed, item)
+		processed++
+
+		switch {
 		case err == nil:
 			created++
 		case errors.Is(err, errSkipItem):
@@ -203,21 +213,43 @@ func (s *Scraper) scrapeFeed(ctx context.Context, feed domain.Feed) {
 		case errors.Is(err, domain.ErrConflict):
 			// Already stored on an earlier pass: the expected steady state.
 			duplicates++
+		case errors.Is(err, domain.ErrNotFound):
+			// The feed was deleted while we were fetching it, so every
+			// remaining item would fail its foreign key the same way. Report it
+			// once instead of once per item.
+			stopReason = "feed removed while it was being scraped"
 		case ctx.Err() != nil:
-			return
+			// The per-feed budget ran out. The feed was already marked as
+			// fetched, so without this the remaining items would be dropped
+			// with no trace at all.
+			stopReason = "per-feed timeout reached before all items were stored"
 		default:
+			failed++
 			s.log.Error("store post", "feed", feed.Name, "url", item.Link, "error", err)
+		}
+
+		if stopReason != "" {
+			break
 		}
 	}
 
-	s.log.Info("feed scraped",
+	attrs := []any{
 		"feed", feed.Name,
 		"url", feed.URL,
 		"items", len(fetched.Items),
 		"created", created,
 		"duplicates", duplicates,
 		"skipped", skipped,
-	)
+		"failed", failed,
+	}
+
+	if stopReason != "" {
+		s.log.Warn("feed scrape stopped early",
+			append(attrs, "reason", stopReason, "unprocessed", len(fetched.Items)-processed)...)
+		return
+	}
+
+	s.log.Info("feed scraped", attrs...)
 }
 
 // errSkipItem marks an item that cannot be stored and should not be reported

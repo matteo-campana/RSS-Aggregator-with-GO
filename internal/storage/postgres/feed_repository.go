@@ -53,9 +53,18 @@ func (r *FeedRepository) List(ctx context.Context, limit, offset int32) ([]domai
 	return toDomainFeeds(rows), nil
 }
 
-// NextToFetch returns the least recently fetched feeds, never-fetched first.
-func (r *FeedRepository) NextToFetch(ctx context.Context, limit int32) ([]domain.Feed, error) {
-	rows, err := r.q.GetNextFeedsToFetch(ctx, limit)
+// NextToFetch returns the least recently fetched feeds that are due,
+// never-fetched first.
+func (r *FeedRepository) NextToFetch(
+	ctx context.Context,
+	limit int32,
+	notFetchedSince time.Time,
+) ([]domain.Feed, error) {
+	since := notFetchedSince.UTC()
+	rows, err := r.q.GetNextFeedsToFetch(ctx, sqlc.GetNextFeedsToFetchParams{
+		Limit:         limit,
+		LastFetchedAt: &since,
+	})
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -67,10 +76,10 @@ func (r *FeedRepository) NextToFetch(ctx context.Context, limit int32) ([]domain
 // The timestamp is supplied by the caller's clock rather than by the database's
 // NOW(), which keeps the scraper deterministic under test.
 func (r *FeedRepository) MarkFetched(ctx context.Context, id uuid.UUID, at time.Time) error {
-	at = at.UTC()
+	utcAt := at.UTC()
 	_, err := r.q.MarkFeedAsFetched(ctx, sqlc.MarkFeedAsFetchedParams{
 		ID:            id,
-		LastFetchedAt: &at,
+		LastFetchedAt: &utcAt,
 	})
 	return translate(err)
 }

@@ -22,9 +22,16 @@ type Querier interface {
 	// The trailing id keeps the ordering total, so a page boundary cannot repeat
 	// or skip a feed when several share a created_at.
 	GetFeeds(ctx context.Context, arg GetFeedsParams) ([]Feed, error)
-	GetNextFeedsToFetch(ctx context.Context, limit int32) ([]Feed, error)
+	// Only feeds that are actually due are returned. Without the predicate every
+	// replica of the API selects the same batch on every tick and refetches feeds
+	// that were just fetched, with the duplicate inserts absorbed as conflicts so
+	// nothing surfaces in the logs.
+	GetNextFeedsToFetch(ctx context.Context, arg GetNextFeedsToFetchParams) ([]Feed, error)
 	GetPostsForUser(ctx context.Context, arg GetPostsForUserParams) ([]Post, error)
 	GetUserByApiKey(ctx context.Context, apiKey string) (User, error)
+	// updated_at is deliberately left alone: it describes the feed's own
+	// attributes, and bumping it on every pass made clients polling GET /v1/feeds
+	// see every feed change once per interval when nothing had.
 	MarkFeedAsFetched(ctx context.Context, arg MarkFeedAsFetchedParams) (Feed, error)
 }
 

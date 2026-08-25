@@ -202,6 +202,56 @@ func TestFeedFetchScheduling(t *testing.T) {
 	assert.WithinDuration(t, at, *found.LastFetchedAt, time.Second)
 }
 
+// Only feeds that are actually due may come back, otherwise every replica
+// refetches the same batch on every tick.
+func TestNextToFetchSkipsRecentlyFetchedFeeds(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+	feed := newFeed(ctx, t, r, user)
+
+	contains := func(feeds []domain.Feed) bool {
+		for _, f := range feeds {
+			if f.ID == feed.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	now := time.Now().UTC()
+
+	// Never fetched: always due.
+	due, err := r.feeds.NextToFetch(ctx, 500, now)
+	require.NoError(t, err)
+	assert.True(t, contains(due), "a never-fetched feed must be due")
+
+	require.NoError(t, r.feeds.MarkFetched(ctx, feed.ID, now))
+
+	due, err = r.feeds.NextToFetch(ctx, 500, now.Add(-time.Hour))
+	require.NoError(t, err)
+	assert.False(t, contains(due), "a feed fetched just now must not be due again")
+
+	due, err = r.feeds.NextToFetch(ctx, 500, now.Add(time.Hour))
+	require.NoError(t, err)
+	assert.True(t, contains(due), "it becomes due once the interval has passed")
+}
+
+// MarkFetched must not touch updated_at: that column describes the feed's own
+// attributes, and bumping it every pass made clients see constant changes.
+func TestMarkFetchedLeavesUpdatedAtAlone(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+	feed := newFeed(ctx, t, r, user)
+
+	require.NoError(t, r.feeds.MarkFetched(ctx, feed.ID, time.Now().UTC().Add(time.Minute)))
+
+	var updatedAt time.Time
+	require.NoError(t, r.pool.QueryRow(ctx,
+		"SELECT updated_at FROM feeds WHERE id = $1", feed.ID).Scan(&updatedAt))
+
+	assert.Equal(t, feed.UpdatedAt, updatedAt.UTC())
+}
+
 // GET /v1/feeds is public and used to return the whole table.
 func TestFeedPagination(t *testing.T) {
 	ctx, r := setup(t)
