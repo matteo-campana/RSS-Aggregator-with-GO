@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rss_aggregator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rss_aggregator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Applies the goose migrations, then exits. The API waits for it to succeed.
+  migrate:
+    image: golang:1.25-alpine
+    working_dir: /src
+    volumes:
+      - .:/src
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: postgres://postgres:postgres@postgres:5432/rss_aggregator?sslmode=disable
+      GOOSE_MIGRATION_DIR: /src/sql/schema
+    command: >
+      sh -c "go run github.com/pressly/goose/v3/cmd/goose@v3.27.3 up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment:
+      PORT: "8080"
+      DB_URL: postgres://postgres:postgres@postgres:5432/rss_aggregator?sslmode=disable
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:

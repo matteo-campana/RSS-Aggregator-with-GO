@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - revive
+    - unconvert
+  exclusions:
+    # Skip findings in files carrying a "Code generated ... DO NOT EDIT" header,
+    # which covers everything sqlc writes under internal/storage/postgres/sqlc.
+    generated: lax
+    rules:
+      # Test files legitimately use weak randomness and hard-coded credentials.
+      - path: _test\.go
+        linters:
+          - gosec
+      # The test harness closes response bodies with t.Cleanup, which bodyclose
+      # cannot follow across the helper that returns the response.
+      - path: _test\.go
+        linters:
+          - bodyclose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

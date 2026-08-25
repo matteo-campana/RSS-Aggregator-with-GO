@@ -4,94 +4,111 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-A small RSS aggregator HTTP API written in Go, backed by Postgres. A background scraper
-polls followed feeds on a timer, parses their RSS XML, and stores new posts. All source
-files live at the repo root in `package main` (no `cmd/`/`internal` split for the app
-itself); `internal/database` holds sqlc-generated DB code.
+An RSS/Atom aggregator HTTP API in Go backed by PostgreSQL. A background scraper polls the
+least recently fetched feeds on a timer and stores their items as posts. The codebase is
+layered: dependencies point inward toward `internal/domain`, and each consumer declares the
+narrow interface it needs rather than importing a concrete implementation.
 
 ## Commands
 
-There is no Makefile; use `go` directly.
+`make help` lists everything. The most used:
 
-- Run the server: `go run .` (loads `.env` via godotenv — requires `PORT` and `DB_URL`)
-- Build: `go build -o out .`
-- Vet: `go vet ./...`
-- Tests: `go test ./...` (no test files currently exist in the repo)
-- Tidy deps: `go mod tidy`
+- `make run` — run the API (loads `.env`; requires `PORT` and `DB_URL`)
+- `make test` — unit tests with `-race`; **requires no database**
+- `make check` — `go vet` + `golangci-lint` + tests, i.e. what CI enforces
+- `make generate` — regenerate the sqlc code after any change under `sql/`
+- `make migrate-up DB_URL=...` — apply goose migrations
+- `go test ./internal/service/... -run TestUserServiceCreate` — a single test
 
-### Database (Postgres + sqlc + goose)
-
-- Schema migrations live in `sql/schema/*.sql`, written as goose migrations (`-- +goose Up`
-  / `-- +goose Down` blocks), applied in numeric filename order (e.g. `001_users.sql`).
-  Add new schema changes as a new numbered file rather than editing existing ones.
-- Hand-written SQL queries live in `sql/queries/*.sql`, annotated with sqlc `-- name:` magic
-  comments (e.g. `-- name: CreateUser :one`).
-- `internal/database/*.go` is **generated** by [sqlc](https://sqlc.dev) from `sqlc.yaml`
-  (schema: `sql/schema`, queries: `sql/queries`, engine: `postgresql`, output:
-  `internal/database`). Regenerate with `sqlc generate` after changing any file under
-  `sql/schema/` or `sql/queries/` — do not hand-edit files in `internal/database/`.
-- The app expects `DB_URL` to point at an already-migrated Postgres database (run the goose
-  migrations out-of-band; this repo does not vendor the goose CLI or run migrations itself).
+Dev tools are pinned in the `Makefile` and installed into `./bin` via `go install`. They are
+deliberately **not** go.mod `tool` directives: sqlc's dependency graph would otherwise take
+part in this module's version selection.
 
 ## Architecture
 
-### Request flow
+### Layering
 
-`main.go` wires everything: loads env vars, opens the Postgres connection, builds a
-`database.Queries` (sqlc-generated), wraps it in `apiConfig{DB: *database.Queries}`, and
-mounts a `chi` router under `/v1`. Each `v1Router.<Method>` route maps directly to a
-`handler_*.go` function that is a method on `*apiConfig`.
+```
+cmd/api                  composition root — the ONLY place that constructs concrete types
+internal/domain          models + error taxonomy; imports nothing else from the project
+internal/config          env loading/validation (reads os.Getenv only, so t.Setenv drives it)
+internal/service         application rules; declares its own repository interfaces
+internal/storage/postgres adapters over sqlc output; the ONLY package importing pgx
+internal/feedfetch       the ONLY package importing gofeed
+internal/scraper         polling loop; declares its own narrow interfaces
+internal/transport/http  chi router, handlers, DTOs, auth middleware
+internal/apikey          crypto/rand API-key generation
+```
 
-- Public routes: `GET /v1/healthz`, `GET /v1/err`, `POST /v1/users`, `GET /v1/feeds`
-- Authenticated routes are wrapped with `apiCfg.middlewareAuth(...)`: `GET /v1/users`,
-  `POST /v1/feeds`, `GET/POST /v1/feed_follows`, `DELETE /v1/feed_follows/{feed_follow_id}`,
-  `GET /v1/posts`
+Rules that must hold when adding code:
 
-### Auth
+- **Interfaces are declared by the consumer**, not by the implementer. `service.UserRepository`
+  and `scraper.FeedRepository` both live next to the code that calls them; the postgres
+  adapters satisfy them structurally without importing those packages.
+- **Keep interfaces segregated.** One concrete `postgres.FeedRepository` satisfies both
+  `service.FeedRepository` (create/list) and `scraper.FeedRepository` (next-to-fetch/mark).
+  Do not merge them into one wide interface.
+- **Nothing outside `internal/storage/postgres` may import pgx**, and nothing outside
+  `internal/feedfetch` may import gofeed.
+- `Clock`, `IDGenerator` and `APIKeyGenerator` are injected so services are deterministic in
+  tests. Do not call `time.Now()` or `uuid.New()` inside a service.
 
-`internal/auth/auth.go` extracts an API key from the `Authorization: ApiKey <key>` header.
-`midlleware_auth.go` (note the filename typo — deliberate, not a bug) defines the
-`authHandler func(http.ResponseWriter, *http.Request, database.User)` signature and a
-`middlewareAuth` wrapper that looks the user up by API key (`GetUserByApiKey`) and injects
-`database.User` as the third handler argument. Every authenticated handler in `handler_*.go`
-follows this three-arg signature.
+### Errors
 
-### DB-model vs API-model split
+`internal/domain/errors.go` defines `ErrNotFound`, `ErrConflict`, `ErrInvalidInput`,
+`ErrUnauthorized` and `ValidationError` (which unwraps to `ErrInvalidInput`).
 
-`internal/database` types (sqlc-generated, e.g. `database.User`, `database.Feed`) are the
-Postgres row shapes and use `sql.NullString` etc. for nullable columns. `models.go` defines
-parallel API-facing types (`User`, `Feed`, `FeedFollows`, `Post`) with JSON tags and plain
-Go types (e.g. `*string` instead of `sql.NullString`), plus `database*To*` conversion
-functions. Handlers always fetch/mutate via `database.Queries`, then convert to the API type
-before calling `respondeWithJSON`. When adding a new entity, follow this same pattern:
-sqlc query → DB struct → `models.go` API struct + converter → handler.
+- `storage/postgres/errors.go#translate` maps `pgx.ErrNoRows` and SQLSTATE codes (`23505`
+  unique → conflict, `23503` FK → not found) into that taxonomy. **Classify on SQLSTATE, never
+  on message text** — the previous code matched the Italian string `"chiave duplicato"` and
+  broke under any other locale.
+- `transport/http/response.go#statusFor` maps the taxonomy to status codes, and
+  `clientMessage` ensures internal errors are logged in full but reported generically.
 
-### JSON responses
+### DB-model vs domain-model split
 
-All handlers respond via `respondeWithJSON`/`respondeWithError` in `json.go` (note the
-"responde" spelling — matches existing code, don't "fix" it independently). These are the
-only response helpers; don't call `w.Write`/`json.Marshal` directly in handlers.
+`internal/storage/postgres/sqlc/` is **generated** — never hand-edit it. `sqlc.yaml` pins the
+generated types with explicit `overrides` so no `pgtype.*` reaches the domain:
 
-### Background scraper
+- `db_type: "uuid"` → `uuid.UUID` (note: `pg_catalog.uuid` is *not* matched here)
+- `db_type: "pg_catalog.timestamp"` → `time.Time`, and `*time.Time` when nullable
 
-`scraper.go`'s `startScraping` runs in a goroutine started from `main()`, on a
-`time.Ticker`. Each tick it calls `db.GetNextFeedsToFetch` (least-recently-fetched feeds,
-limited by the configured concurrency) and fans out one goroutine per feed
-(`scarpeFeed` — typo kept, matches existing code) via a `sync.WaitGroup`. Each feed
-goroutine: marks the feed fetched (`MarkFeedAsFetched`), fetches+parses the XML via
-`rss.go`'s `urlToFeed`, and inserts each item with `CreatePost`, treating a duplicate-URL
-insert error as an expected skip (matched via substring `"chiave duplicato"` — the
-Italian-locale Postgres unique-violation message — rather than a Postgres error code).
-`startScraping(db, concurrency, timeBetweenRequest)` is called from `main.go` with
-concurrency `10` and interval `time.Minute`.
+This matters because with `sql_package: pgx/v5` the driver's `pgtype.*` otherwise overrides
+`emit_pointers_for_null_types`. If you change `sql/`, run `make generate` and **read the
+output** before writing mapping code; `storage/postgres/mapping.go` is the single file that
+absorbs a change in what sqlc emits.
 
-## Conventions to preserve
+Adding an entity: sqlc query → regenerate → domain model → repository + mapping → consumer
+interface → service → handler + DTO.
 
-- Handler files are named `handler_<resource>.go`; each defines the route handlers for one
-  resource and nothing else.
-- Existing filename/identifier typos (`midlleware_auth.go`, `scarpeFeed`, `respondeWith*`)
-  are established convention in this codebase — match them in related code rather than
-  correcting them, to avoid inconsistent naming across the file.
-- Timestamps are always stored/compared in UTC (`time.Now().UTC()`), except
-  `handler_feed_follows.go` which currently uses local `time.Now()` — be aware of this
-  inconsistency if you touch that file.
+### Scraper
+
+`scraper.Run(ctx)` scrapes immediately, then once per `Interval`, and returns `nil` when ctx
+is cancelled. Each pass takes a batch of `Concurrency` feeds and fans out under a semaphore
+with a per-feed timeout. `domain.ErrConflict` from the post writer is the expected steady
+state (already-seen item) and must stay non-fatal. Items with no usable date fall back to the
+fetch time; items with an empty link are skipped, because `posts.url` is `NOT NULL UNIQUE`.
+
+`feedfetch.Fetcher` builds a fresh `gofeed.Parser` per call — the parser lazily initialises
+its translators, which races when shared — while reusing one `http.Client`.
+
+## Conventions
+
+- Handler files are `internal/transport/http/handler_<resource>.go`, one resource each.
+- Handlers respond only via `s.respond` / `s.fail`; never call `w.Write` or `json.Marshal`
+  directly, and never put a raw error string in a client response.
+- All timestamps are UTC, always via the injected `Clock`.
+- Authenticated handlers have the signature `func(http.ResponseWriter, *http.Request, domain.User)`
+  and are wrapped with `s.requireUser(...)`.
+- Never call `log.Fatal` outside `main` — an earlier version did this inside request handlers
+  and a single database error killed the server.
+- `middleware.RealIP` is intentionally not installed: it trusts client-controlled headers.
+
+## Testing
+
+- Unit tests use in-memory fakes of the port interfaces and run without a database. Fakes live
+  in `fakes_test.go` in each package.
+- DB-backed tests are behind `//go:build integration` and skip unless `TEST_DB_URL` is set;
+  they validate the real SQL and the SQLSTATE mapping. Run with
+  `TEST_DB_URL=... make test-integration`.
+- Tests that call `t.Setenv` cannot use `t.Parallel()`.

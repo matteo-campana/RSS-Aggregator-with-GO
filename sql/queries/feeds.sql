@@ -13,7 +13,7 @@ LIMIT $1;
 
 -- name: MarkFeedAsFetched :one
 UPDATE feeds
-SET last_fetched_at = NOW(),
-updated_at = NOW()
+SET last_fetched_at = $2,
+    updated_at = $2
 WHERE id = $1
 RETURNING *;

@@ -1,29 +1,39 @@
+// Package auth parses API-key credentials out of HTTP requests.
 package auth
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/matteo-campana/rss-aggregator/internal/domain"
 )
 
-// GetAPIKey extracts the API key from the header of the request.
-// Example:
-// Authorization: ApiKey 123456
-func GetAPIKey(headers http.Header) (string, error) {
-	authorization := headers.Get("Authorization")
-	if authorization == "" {
-		return "", errors.New("authorization header is missing")
+// Scheme is the authorization scheme this service accepts:
+//
+//	Authorization: ApiKey <key>
+const Scheme = "ApiKey"
+
+// APIKeyFromHeader extracts the API key from the Authorization header.
+//
+// The scheme comparison is case-insensitive because RFC 9110 defines auth
+// scheme names as case-insensitive tokens.
+func APIKeyFromHeader(headers http.Header) (string, error) {
+	raw := strings.TrimSpace(headers.Get("Authorization"))
+	if raw == "" {
+		return "", fmt.Errorf("%w: missing Authorization header", domain.ErrUnauthorized)
 	}
 
-	authorizations := strings.Split(authorization, " ")
-	if len(authorizations) != 2 {
-		return "", errors.New("invalid authorization header")
+	// Fields collapses runs of whitespace, so "ApiKey   abc" parses too.
+	parts := strings.Fields(raw)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("%w: malformed Authorization header", domain.ErrUnauthorized)
 	}
-
-	if authorizations[0] != "ApiKey" {
-		return "", errors.New("invalid authorization header")
+	if !strings.EqualFold(parts[0], Scheme) {
+		return "", fmt.Errorf("%w: unsupported authorization scheme %q", domain.ErrUnauthorized, parts[0])
 	}
-
-	return authorizations[1], nil
-
+	if parts[1] == "" {
+		return "", fmt.Errorf("%w: empty API key", domain.ErrUnauthorized)
+	}
+	return parts[1], nil
 }

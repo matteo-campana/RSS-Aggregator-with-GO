@@ -2,3 +2,7 @@ rss-aggregator.exe
 .vscode/
 .env
 vendor/
+
+# Compiled binary and pinned dev tools installed by the Makefile.
+bin/
+out

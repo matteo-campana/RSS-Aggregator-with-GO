@@ -5,4 +5,35 @@ sql:
     engine: "postgresql"
     gen:
       go:
-        out: "internal/database"
+        package: "sqlc"
+        out: "internal/storage/postgres/sqlc"
+        sql_package: "pgx/v5"
+        # Querier lets the repository layer be exercised against a fake in tests.
+        emit_interface: true
+        # :many queries return [] rather than nil, so handlers marshal "[]".
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        # With sql_package pgx/v5 the driver's pgtype.* wins over
+        # emit_pointers_for_null_types for uuid and timestamp columns, so each
+        # of those is pinned explicitly here. Verified by regenerating and
+        # reading the output, not assumed.
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              package: "uuid"
+              type: "UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              package: "uuid"
+              type: "UUID"
+              pointer: true
+          - db_type: "pg_catalog.timestamp"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamp"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
