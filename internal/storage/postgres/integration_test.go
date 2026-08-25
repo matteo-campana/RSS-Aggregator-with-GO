@@ -305,7 +305,7 @@ func TestPostsAreReturnedNewestFirst(t *testing.T) {
 		"posts must come back newest first")
 }
 
-func TestDuplicatePostURLIsConflict(t *testing.T) {
+func TestDuplicatePostURLInSameFeedIsConflict(t *testing.T) {
 	ctx, r := setup(t)
 	user := newUser(ctx, t, r)
 	feed := newFeed(ctx, t, r, user)
@@ -323,6 +323,63 @@ func TestDuplicatePostURLIsConflict(t *testing.T) {
 	// This is the classification the scraper depends on to skip already-seen
 	// items; the original code matched the Italian message text instead.
 	assert.ErrorIs(t, err, domain.ErrConflict)
+}
+
+// A syndicated article appears in several feeds. Under the old global UNIQUE on
+// posts.url it was stored once, under whichever feed was scraped first, and was
+// invisible to anyone following only the others.
+func TestSameURLCanExistInTwoFeeds(t *testing.T) {
+	ctx, r := setup(t)
+	user := newUser(ctx, t, r)
+	feedA := newFeed(ctx, t, r, user)
+	feedB := newFeed(ctx, t, r, user)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	shared := "https://example.com/syndicated/" + uuid.NewString()
+
+	require.NoError(t, r.posts.Create(ctx, domain.Post{
+		ID: uuid.New(), CreatedAt: now, UpdatedAt: now,
+		PublishedAt: now, URL: shared, FeedID: feedA.ID,
+	}))
+	require.NoError(t, r.posts.Create(ctx, domain.Post{
+		ID: uuid.New(), CreatedAt: now, UpdatedAt: now,
+		PublishedAt: now, URL: shared, FeedID: feedB.ID,
+	}),
+		"the same article must be storable under each feed that carries it")
+
+	// A user following only feed B must see it.
+	_, err := r.follows.Create(ctx, domain.FeedFollow{
+		ID: uuid.New(), CreatedAt: now, UpdatedAt: now, UserID: user.ID, FeedID: feedB.ID,
+	})
+	require.NoError(t, err)
+
+	posts, err := r.posts.ListForUser(ctx, user.ID, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, posts, 1)
+	assert.Equal(t, feedB.ID, posts[0].FeedID)
+	assert.Equal(t, shared, posts[0].URL)
+}
+
+// Deleting a user cascades to feeds, feed_follows and posts. Without an index
+// on the referencing column each cascade sequentially scans the child table.
+func TestCascadeDeleteTargetsAreIndexed(t *testing.T) {
+	ctx, r := setup(t)
+
+	for _, tc := range []struct {
+		table, column, index string
+	}{
+		{table: "feeds", column: "user_id", index: "idx_feeds_user_id"},
+		{table: "feed_follows", column: "feed_id", index: "idx_feed_follows_feed_id"},
+		{table: "posts", column: "published_at", index: "idx_posts_published_at"},
+	} {
+		var count int
+		err := r.pool.QueryRow(ctx,
+			"SELECT count(*) FROM pg_indexes WHERE tablename = $1 AND indexname = $2",
+			tc.table, tc.index,
+		).Scan(&count)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "%s.%s must be indexed by %s", tc.table, tc.column, tc.index)
+	}
 }
 
 func TestPostPagination(t *testing.T) {

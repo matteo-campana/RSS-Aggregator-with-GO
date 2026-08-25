@@ -141,3 +141,8 @@ This release corrects several defects; the following responses differ from earli
 - `GET /v1/err`, a debug endpoint that only ever returned a canned 400, has been removed.
 - `GET /v1/healthz` returns `{"status":"ok"}` instead of `{}`.
 - Logs are structured JSON via `log/slog`; set `LOG_LEVEL` to control verbosity.
+- An article carried by several feeds now appears under **each** of them. Post uniqueness is
+  per feed (`UNIQUE (feed_id, url)`); it used to be global, so a syndicated article was
+  stored once and was invisible to followers of every feed but the first one scraped.
+- The scraper refuses to connect to loopback, private and link-local addresses, redirects
+  included. Set `SCRAPER_ALLOW_PRIVATE_ADDRESSES=true` only for feeds on a trusted network.

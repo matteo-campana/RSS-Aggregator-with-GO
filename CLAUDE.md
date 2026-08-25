@@ -87,7 +87,12 @@ interface → service → handler + DTO.
 is cancelled. Each pass takes a batch of `Concurrency` feeds and fans out under a semaphore
 with a per-feed timeout. `domain.ErrConflict` from the post writer is the expected steady
 state (already-seen item) and must stay non-fatal. Items with no usable date fall back to the
-fetch time; items with an empty link are skipped, because `posts.url` is `NOT NULL UNIQUE`.
+fetch time; items with an empty link are skipped, because they would all collide on the
+empty string under `posts UNIQUE (feed_id, url)`.
+
+Post uniqueness is **per feed**, not global: a syndicated article legitimately exists once
+per feed that carries it. A global `UNIQUE (url)` made it visible only to followers of
+whichever feed was scraped first.
 
 `feedfetch.Fetcher` builds a fresh `gofeed.Parser` per call — the parser lazily initialises
 its translators, which races when shared — while reusing one `http.Client`.
